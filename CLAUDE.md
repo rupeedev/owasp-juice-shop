@@ -20,8 +20,7 @@ ALWAYS refer below documents while working on this application
 
 ## Git Commit Guidelines
 
-- Rule: I must NOT include the Claude Code signature and co-author attribution in commit
-  messages for this repository.
+- Rule: I must NOT include the Claude Code signature and co-author attribution in commit messages for this repository.
 
 ## Documentation Guidelines
 
@@ -32,6 +31,65 @@ ALWAYS refer below documents while working on this application
   ✓ Skim-able layout
   ✓ LIMITED to 200 lines (max 500-600 based on use-case)
   ✓ MINIMAL decoration, use under the heading "=====" - No heavy borders, just clean headings
+- Don't create README.md file until asked by the user
+
+## Create Session Reports Guidelines
+
+1. Recap what was accomplished
+2. Provide quick reference (TL;DR at top)
+3. Document decisions made
+4. Show next steps
+5. Give you a shareable artifact
+
+### Individual Session Reports
+
+Location: /docs/Summary/{topicName}-summary.txt
+
+Examples:
+
+- /docs/Summary/{training-update-summary.txt
+- /docs/Summary/{simple-pipeline-setup-summary.txt
+- /docs/Summary/{devsecops-practice-summary.txt
+
+Structure:
+
+```
+================================================================================
+TITLE
+================================================================================
+
+TL;DR
+=====
+Brief summary...
+
+KEY SECTIONS
+============
+Details...
+
+NEXT STEPS
+==========
+What to do next...
+
+================================================================================
+END OF SUMMARY
+================================================================================
+```
+
+### Consolidated ChangeLog
+
+Location: /docs/ChangeLog.txt
+
+Purpose: Single source of truth for all training preparation work
+
+Structure:
+
+- Quick View Table at top (Done/Pending status for each topic)
+- Most recent entries first (reverse chronological)
+- Each session report as a section
+- Overall progress summary at bottom
+
+The ChangeLog consolidates all individual session reports into one master
+document, making it easy to track overall progress and reference past work.
 
 ## Technology Stack
 
