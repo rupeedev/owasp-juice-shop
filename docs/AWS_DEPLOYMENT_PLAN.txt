@@ -1,0 +1,535 @@
+================================================================================
+AWS DEPLOYMENT PLANS FOR OWASP JUICE SHOP - INDEX
+================================================================================
+
+PROJECT: OWASP Juice Shop - Intentionally Vulnerable Web Application
+PURPOSE: Security Training, CTF, Awareness Demos
+TECH STACK: Node.js 20-24, Express.js, TypeScript, Angular 20, SQLite
+
+================================================================================
+OVERVIEW
+================================================================================
+
+This directory contains comprehensive deployment guides for hosting OWASP
+Juice Shop on AWS using enterprise-grade container orchestration services.
+
+Two deployment options are available, each with its own detailed guide:
+
+1. AWS ECS with Fargate - AWS_DEPLOYMENT_PLAN_ECS.txt
+2. Amazon EKS (Kubernetes) - AWS_DEPLOYMENT_PLAN_EKS.txt
+
+IMPORTANT SECURITY NOTE:
+This is an INTENTIONALLY VULNERABLE application. Deploy in isolated
+environments only. Never deploy in production networks or expose to
+untrusted users without proper isolation.
+
+================================================================================
+DEPLOYMENT OPTIONS COMPARISON
+================================================================================
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│                     OPTION 1: AWS ECS WITH FARGATE                         │
+├────────────────────────────────────────────────────────────────────────────┤
+│ Document: AWS_DEPLOYMENT_PLAN_ECS.txt                                      │
+│                                                                             │
+│ Best for: Scalable, managed container deployment                           │
+│ Complexity: Medium                                                          │
+│ Cost: ~$85-115/month (24/7 operation)                                      │
+│ Scalability: High (2-10 tasks with auto-scaling)                           │
+│ Time to Deploy: 2-4 hours                                                  │
+│                                                                             │
+│ Use Case:                                                                   │
+│ - Single application deployment                                            │
+│ - Simplified container orchestration                                       │
+│ - Teams familiar with Docker but not Kubernetes                            │
+│ - Cost-sensitive deployments                                               │
+│                                                                             │
+│ Ideal Scenarios:                                                            │
+│ ✓ Security training environments                                           │
+│ ✓ CTF competitions                                                          │
+│ ✓ Awareness demos and workshops                                            │
+│ ✓ Development and testing of security tools                                │
+│ ✓ Quick deployment with minimal DevOps overhead                            │
+└────────────────────────────────────────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────────┐
+│                     OPTION 2: AMAZON EKS (KUBERNETES)                      │
+├────────────────────────────────────────────────────────────────────────────┤
+│ Document: AWS_DEPLOYMENT_PLAN_EKS.txt                                      │
+│                                                                             │
+│ Best for: Kubernetes-based deployments, multi-environment                  │
+│ Complexity: High                                                            │
+│ Cost: ~$195-215/month (24/7 operation)                                     │
+│ Scalability: Very High (advanced orchestration)                            │
+│ Time to Deploy: 4-8 hours                                                  │
+│                                                                             │
+│ Use Case:                                                                   │
+│ - Multi-application environments                                           │
+│ - Advanced orchestration requirements                                      │
+│ - Kubernetes portability across clouds                                     │
+│ - Enterprise-scale deployments                                             │
+│                                                                             │
+│ Ideal Scenarios:                                                            │
+│ ✓ Multiple applications in same cluster                                    │
+│ ✓ Kubernetes-native deployments                                            │
+│ ✓ Teams with Kubernetes expertise                                          │
+│ ✓ Need for service mesh, operators, advanced features                      │
+│ ✓ Workload portability requirements                                        │
+└────────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+DECISION MATRIX
+================================================================================
+
+CHOOSE ECS WITH FARGATE IF:
+---------------------------
+✓ You need quick deployment with minimal Kubernetes knowledge
+✓ Running single application (Juice Shop only)
+✓ Cost is primary concern (~$85-115/month vs ~$195-215/month)
+✓ Team is familiar with Docker but not Kubernetes
+✓ Want serverless container management (no server maintenance)
+✓ Need simplified deployment (2-4 hours)
+✓ Prefer AWS-native solution with tight integration
+
+CHOOSE AMAZON EKS IF:
+---------------------
+✓ You need Kubernetes-native deployment
+✓ Running multiple applications in same cluster
+✓ Need advanced Kubernetes features (service mesh, operators, CRDs)
+✓ Team has Kubernetes expertise
+✓ Require workload portability across clouds (hybrid/multi-cloud)
+✓ Need advanced orchestration capabilities
+✓ Want to leverage Kubernetes ecosystem tools
+✓ Have existing Kubernetes workflows and tooling
+
+================================================================================
+COST COMPARISON
+================================================================================
+
+MONTHLY COSTS (24/7 OPERATION):
+
+ECS with Fargate:                    ~$85-115/month
+├─ Fargate tasks (2 × 0.5 vCPU)     $30-40
+├─ Application Load Balancer        $18-20
+├─ EFS Storage (5GB)                $1.50
+├─ NAT Gateway                      $35-37
+├─ CloudWatch Logs                  $2-5
+├─ ECR                              $0.10
+├─ Route 53 (optional)              $0.50-1
+└─ Data Transfer                    $5-10
+
+Amazon EKS:                          ~$195-215/month
+├─ EKS Control Plane                $73
+├─ EC2 Worker Nodes (2 × t3.medium) $60
+├─ EBS Volumes (2 × 30GB)           $7
+├─ Application Load Balancer        $18-20
+├─ EFS Storage (5GB)                $1.50
+├─ NAT Gateway                      $35-37
+├─ CloudWatch Logs                  $2-5
+└─ Data Transfer                    $5-10
+
+COST OPTIMIZATION:
+
+ECS Fargate:
+- Use Fargate Spot: Save ~$20-25/month (70% discount)
+- Business hours only: Save ~$60-70/month
+- Single AZ (dev only): Save ~$35/month
+
+Amazon EKS:
+- Use EC2 Spot Instances: Save ~$40-50/month (70% discount)
+- Use EKS with Fargate: ~$105-115/month total
+- Stop cluster off-hours: Save ~$120-140/month
+
+================================================================================
+FEATURE COMPARISON
+================================================================================
+
+┌─────────────────────────────────┬─────────────┬─────────────┐
+│ Feature                         │ ECS Fargate │ Amazon EKS  │
+├─────────────────────────────────┼─────────────┼─────────────┤
+│ Server Management               │ None        │ Minimal*    │
+│ Kubernetes API                  │ No          │ Yes         │
+│ Auto-Scaling                    │ Built-in    │ HPA + CA    │
+│ Load Balancing                  │ ALB         │ ALB/NLB     │
+│ Service Discovery               │ Built-in    │ CoreDNS     │
+│ Rolling Updates                 │ Built-in    │ Built-in    │
+│ Blue/Green Deployments          │ Via CodeDep │ Native      │
+│ Secrets Management              │ Param Store │ K8s Secrets │
+│ Pod Security Policies           │ N/A         │ Yes         │
+│ Service Mesh Support            │ App Mesh    │ Any (Istio) │
+│ Custom Resource Definitions     │ No          │ Yes         │
+│ Helm Chart Support              │ No          │ Yes         │
+│ GitOps (ArgoCD/Flux)           │ Limited     │ Native      │
+│ Multi-tenancy                   │ Basic       │ Advanced    │
+│ Cloud Portability               │ AWS-only    │ High        │
+│ Learning Curve                  │ Low-Medium  │ High        │
+│ Community Ecosystem             │ AWS-focused │ Very Large  │
+│ Third-party Integrations        │ Good        │ Excellent   │
+└─────────────────────────────────┴─────────────┴─────────────┘
+
+* With managed node groups or Fargate for EKS
+
+================================================================================
+DEPLOYMENT GUIDES
+================================================================================
+
+OPTION 1: ECS WITH FARGATE
+--------------------------
+File: AWS_DEPLOYMENT_PLAN_ECS.txt
+
+Contents:
+- Executive Summary
+- Prerequisites and AWS Services
+- Infrastructure Architecture
+- Network Architecture
+- Security Configuration
+- 8-Phase Step-by-Step Deployment:
+  1. Prepare Docker Image
+  2. Setup VPC and Networking
+  3. Setup EFS for Persistent Storage
+  4. Setup Application Load Balancer
+  5. Create ECS Cluster and Task Definition
+  6. Create ECS Service with Auto-Scaling
+  7. Configure CloudWatch Logging
+  8. DNS and SSL Configuration
+- Monitoring and Maintenance
+- Cost Breakdown and Optimization
+- Comprehensive Troubleshooting Guide
+- CI/CD Pipeline with GitHub Actions
+- Security Best Practices
+- Disaster Recovery and High Availability
+- Additional Resources
+
+Page Count: ~60 pages
+Deployment Time: 2-4 hours
+Skill Level: Intermediate
+
+OPTION 2: AMAZON EKS
+--------------------
+File: AWS_DEPLOYMENT_PLAN_EKS.txt
+
+Contents:
+- Executive Summary
+- Prerequisites and AWS Services
+- Infrastructure Architecture
+- Network Architecture and Kubernetes Requirements
+- Security Configuration (RBAC, Pod Security)
+- 7-Phase Step-by-Step Deployment:
+  1. Prepare Docker Image
+  2. Create EKS Cluster with eksctl
+  3. Install Essential Add-ons (ALB Controller, EFS CSI, Metrics Server)
+  4. Setup EFS for Persistent Storage
+  5. Deploy Juice Shop Application (K8s Manifests)
+  6. Configure Monitoring and Logging
+  7. DNS and SSL Configuration
+- Complete Kubernetes Manifests:
+  * Deployment with health checks
+  * Service (NodePort)
+  * Ingress with ALB
+  * HorizontalPodAutoscaler
+  * PersistentVolumeClaim
+  * StorageClass
+- Monitoring and Maintenance
+- Cost Breakdown and Optimization
+- Comprehensive Troubleshooting Guide
+- CI/CD Pipeline with GitHub Actions
+- Security Best Practices (Container + K8s)
+- Disaster Recovery with Velero
+- EKS with Fargate Alternative
+- Additional Resources
+
+Page Count: ~80 pages
+Deployment Time: 4-8 hours
+Skill Level: Advanced
+
+================================================================================
+GETTING STARTED
+================================================================================
+
+STEP 1: ASSESS YOUR REQUIREMENTS
+---------------------------------
+Answer these questions to determine the best option:
+
+1. Does your team have Kubernetes experience?
+   - No → ECS Fargate
+   - Yes → Either option
+
+2. Will you deploy multiple applications in the same cluster?
+   - No → ECS Fargate
+   - Yes → EKS
+
+3. Is cost a primary concern?
+   - Yes → ECS Fargate (~50% cheaper)
+   - No → Either option
+
+4. Do you need workload portability across clouds?
+   - No → ECS Fargate
+   - Yes → EKS
+
+5. How quickly do you need to deploy?
+   - ASAP → ECS Fargate (2-4 hours)
+   - Have time → EKS (4-8 hours)
+
+6. Do you need advanced Kubernetes features (service mesh, operators)?
+   - No → ECS Fargate
+   - Yes → EKS
+
+STEP 2: REVIEW THE APPROPRIATE GUIDE
+-------------------------------------
+Based on your assessment, open the corresponding detailed guide:
+
+For ECS: Open AWS_DEPLOYMENT_PLAN_ECS.txt
+For EKS: Open AWS_DEPLOYMENT_PLAN_EKS.txt
+
+STEP 3: PREPARE PREREQUISITES
+------------------------------
+Both options require:
+✓ AWS Account with appropriate permissions
+✓ AWS CLI installed and configured
+✓ Docker installed locally
+✓ Domain name (optional)
+
+EKS additionally requires:
+✓ kubectl (Kubernetes CLI)
+✓ eksctl (EKS cluster management tool)
+✓ Helm 3.x (Kubernetes package manager)
+
+STEP 4: FOLLOW THE DEPLOYMENT PHASES
+-------------------------------------
+Each guide provides detailed, step-by-step instructions with:
+- Exact commands to run
+- Expected outputs
+- Verification steps
+- Troubleshooting tips
+
+STEP 5: CONFIGURE SECURITY AND MONITORING
+------------------------------------------
+Critical for production-like environments:
+✓ Restrict network access
+✓ Configure CloudWatch alarms
+✓ Enable logging and monitoring
+✓ Implement backup strategy
+
+STEP 6: TEST THOROUGHLY
+------------------------
+Before providing access to users:
+✓ Verify application functionality
+✓ Test health checks
+✓ Verify auto-scaling (if configured)
+✓ Test disaster recovery procedures
+✓ Performance testing
+
+================================================================================
+MIGRATION BETWEEN OPTIONS
+================================================================================
+
+If you start with one option and need to migrate to the other:
+
+ECS TO EKS MIGRATION:
+---------------------
+1. Backup SQLite database from EFS
+2. Create EKS cluster following EKS guide
+3. Setup EFS CSI driver and persistent volumes
+4. Copy database to new EFS mount
+5. Deploy application to EKS using Kubernetes manifests
+6. Test thoroughly in EKS environment
+7. Update DNS to point to new ALB (EKS ingress)
+8. Monitor for 24-48 hours
+9. Decommission ECS cluster
+
+Downtime: Can be zero with DNS-based failover
+Cost During Migration: ~2x (both environments running)
+
+EKS TO ECS MIGRATION:
+---------------------
+1. Backup SQLite database from EKS EFS
+2. Create ECS cluster following ECS guide
+3. Setup EFS for ECS tasks
+4. Copy database to ECS EFS mount
+5. Deploy ECS service
+6. Test thoroughly
+7. Update DNS to point to ECS ALB
+8. Monitor for 24-48 hours
+9. Delete EKS cluster
+
+Downtime: Can be zero with DNS-based failover
+Cost During Migration: ~2x (both environments running)
+
+MIGRATION CHECKLIST:
+-------------------
+□ Backup all data before migration
+□ Test new environment thoroughly
+□ Document configuration differences
+□ Plan DNS cutover window
+□ Notify users of migration schedule
+□ Have rollback plan ready
+□ Monitor both environments during transition
+□ Keep old environment running for 7-14 days post-migration
+□ Verify cost changes post-migration
+□ Update documentation and runbooks
+
+================================================================================
+SECURITY CONSIDERATIONS (BOTH OPTIONS)
+================================================================================
+
+CRITICAL: This is an intentionally vulnerable application!
+
+MANDATORY SECURITY MEASURES:
+-----------------------------
+1. Network Isolation
+   ✓ Deploy in dedicated VPC isolated from production
+   ✓ Use private subnets for application
+   ✓ Restrict ALB to specific IP ranges
+   ✓ Never peer with production VPCs
+
+2. Access Control
+   ✓ Implement authentication (Cognito, OIDC, SAML)
+   ✓ Use AWS WAF for IP filtering and rate limiting
+   ✓ Require VPN for access
+   ✓ MFA for AWS console access
+
+3. Monitoring
+   ✓ Enable VPC Flow Logs
+   ✓ CloudWatch alarms for anomalies
+   ✓ AWS GuardDuty threat detection
+   ✓ Regular security audits
+
+4. Data Protection
+   ✓ No production data in this app
+   ✓ Regular database resets
+   ✓ Encrypted storage (EFS, EBS)
+   ✓ TLS/SSL in transit
+
+5. Compliance
+   ✓ Document usage policy
+   ✓ User training required
+   ✓ Incident response plan
+   ✓ Compliance monitoring
+
+================================================================================
+SUPPORT AND RESOURCES
+================================================================================
+
+INTERNAL DOCUMENTATION:
+-----------------------
+- /docs/FRONTEND_BACKEND_DATABASE_FLOW.txt - Application architecture
+- /docs/CLAUDE.md - Development guidelines
+- /docs/AWS_DEPLOYMENT_PLAN_ECS.txt - ECS deployment guide
+- /docs/AWS_DEPLOYMENT_PLAN_EKS.txt - EKS deployment guide
+
+AWS DOCUMENTATION:
+------------------
+- ECS: https://docs.aws.amazon.com/ecs/
+- EKS: https://docs.aws.amazon.com/eks/
+- Fargate: https://docs.aws.amazon.com/fargate/
+- ECR: https://docs.aws.amazon.com/ecr/
+
+JUICE SHOP RESOURCES:
+---------------------
+- Official Docs: https://pwning.owasp-juice.shop
+- GitHub: https://github.com/juice-shop/juice-shop
+- Docker Hub: https://hub.docker.com/r/bkimminich/juice-shop
+- OWASP Project: https://owasp.org/www-project-juice-shop/
+
+COMMUNITY SUPPORT:
+------------------
+- OWASP Slack: #project-juice-shop
+- GitHub Discussions: https://github.com/juice-shop/juice-shop/discussions
+- Stack Overflow: Tag [owasp-juice-shop]
+
+AWS SUPPORT:
+------------
+- AWS Support Console
+- AWS re:Post: https://repost.aws/
+- AWS Documentation
+
+================================================================================
+FREQUENTLY ASKED QUESTIONS
+================================================================================
+
+Q: Which option should I choose for a beginner?
+A: ECS with Fargate. It's simpler, faster to deploy, and costs less.
+
+Q: Can I run both environments simultaneously?
+A: Yes, but it will double your costs. Useful for migration or testing.
+
+Q: How do I reduce costs?
+A: Both guides include detailed cost optimization strategies. Key: Stop when not in use, use Spot instances, schedule scaling.
+
+Q: Is this production-ready?
+A: The infrastructure is production-grade, but the application is intentionally vulnerable. Never deploy in production networks.
+
+Q: Can I use this for CTF competitions?
+A: Yes, both options are excellent for CTF events. ECS is recommended for cost and simplicity.
+
+Q: How do I update the Juice Shop version?
+A: Build new Docker image, push to ECR, update ECS service or K8s deployment. Both guides include CI/CD pipelines for automated updates.
+
+Q: What about data persistence?
+A: Both use Amazon EFS for persistent SQLite database storage across container restarts.
+
+Q: Can I customize the application?
+A: Yes, Juice Shop is highly configurable via config/*.yml files. See CLAUDE.md for details.
+
+Q: How do I troubleshoot issues?
+A: Both guides include comprehensive troubleshooting sections with common issues and solutions.
+
+Q: What's the minimum AWS knowledge required?
+A: ECS: Basic AWS (VPC, IAM, EC2 concepts). EKS: Advanced AWS + Kubernetes knowledge.
+
+================================================================================
+CHANGE LOG
+================================================================================
+
+Version 2.0 - Split into separate deployment guides
+- Created AWS_DEPLOYMENT_PLAN_ECS.txt (comprehensive ECS guide)
+- Created AWS_DEPLOYMENT_PLAN_EKS.txt (comprehensive EKS guide)
+- This file now serves as index and comparison guide
+- Enhanced decision matrix and feature comparison
+- Added migration guides between options
+
+Version 1.0 - Initial combined deployment plan
+- Documented multiple deployment options in single file
+- Detailed step-by-step instructions
+- Cost estimates and security considerations
+
+================================================================================
+CONCLUSION
+================================================================================
+
+Both ECS with Fargate and Amazon EKS provide robust, scalable platforms for
+hosting OWASP Juice Shop on AWS. Choose based on your team's expertise,
+requirements, and budget.
+
+For most use cases, **ECS with Fargate is recommended** due to:
+- Lower complexity
+- Faster deployment
+- Lower cost
+- Excellent for single-application deployments
+
+Choose **Amazon EKS** when you need:
+- Kubernetes-native deployment
+- Multi-application environments
+- Advanced orchestration features
+- Workload portability
+
+Both options provide:
+✓ High availability across multiple AZs
+✓ Automatic scaling
+✓ Persistent storage via EFS
+✓ Comprehensive monitoring and logging
+✓ CI/CD pipeline support
+✓ Production-grade infrastructure
+
+**SECURITY REMINDER:**
+This is an intentionally vulnerable application for security training purposes.
+ALWAYS deploy in isolated environments. Never expose to production networks or
+untrusted users without proper access controls and network isolation.
+
+For detailed deployment instructions, refer to the specific guide:
+- **AWS_DEPLOYMENT_PLAN_ECS.txt** for ECS with Fargate
+- **AWS_DEPLOYMENT_PLAN_EKS.txt** for Amazon EKS
+
+Good luck with your deployment!
+
+================================================================================

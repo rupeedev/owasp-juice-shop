@@ -8,7 +8,30 @@ OWASP Juice Shop is an intentionally insecure web application designed for secur
 
 **Important**: This is an intentionally vulnerable application. Do not suggest "fixing" security vulnerabilities unless explicitly requested, as they are features, not bugs. The vulnerabilities are educational tools.
 
+## Documents To Refer
 
+ALWAYS refer below documents while working on this application
+
+1. /docs/AWS_DEPLOYMENT_PLAN.txt
+2. /docs/AWS_DEPLOYMENT_PLAN_ECS.txt
+3. /docs/DEVSECOPS_TRAINING_WITH_JUICE_SHOP.txt
+4. /docs/FRONTEND_BACKEND_DATABASE_FLOW.txt
+5. /docs/LOCALSTACK_DEPLOYMENT_GUIDE.txt
+
+## Git Commit Guidelines
+
+- Rule: I must NOT include the Claude Code signature and co-author attribution in commit
+  messages for this repository.
+
+## Documentation Guidelines
+
+- ALWAYS write the new document in txt format , follow
+  ✓ TXT format
+  ✓ TL;DR at the top
+  ✓ In /docs directory
+  ✓ Skim-able layout
+  ✓ LIMITED to 200 lines (max 500-600 based on use-case)
+  ✓ MINIMAL decoration, use under the heading "=====" - No heavy borders, just clean headings
 
 ## Technology Stack
 
@@ -263,7 +286,6 @@ This runs automated smoke tests that verify:
 - Angular bundle is present
 - Challenge endpoints work
 
-
 ## Run Juice Shop normally (not just tests):
 
   Option 1: Using the pre-built image (quick start)
@@ -303,3 +325,4 @@ cd vagrant && vagrant up
 - Official Documentation: https://pwning.owasp-juice.shop
 - GitHub Issues: https://github.com/juice-shop/juice-shop/issues
 - CTF Extension: https://github.com/juice-shop/juice-shop-ctf
+- add to memory "Documentation Guidelines" ALWAYS write the new document in txt format , follow TL;DR , and write in directory /docs ONLY
