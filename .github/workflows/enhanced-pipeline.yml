@@ -21,7 +21,7 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
-        run: npm install --ignore-scripts
+        run: npm ci
 
       - name: Run linter
         run: npm run lint
@@ -43,6 +43,10 @@ jobs:
         with:
           node-version: '22'
 
+      # Install dependencies FIRST
+      - name: Install dependencies
+        run: npm ci
+
       # SAST - Static Application Security Testing
       - name: Run SAST (CodeQL or Semgrep)
         run: |
@@ -50,7 +54,7 @@ jobs:
           # TODO: Implement CodeQL or Semgrep
           # For now, use npm audit as basic SAST
           npm audit --audit-level=high || true
-        continue-on-error: false  # Block on HIGH/CRITICAL
+        continue-on-error: true  # Warning mode for training
 
       # Secret Detection
       - name: Run Secret Detection
@@ -59,11 +63,7 @@ jobs:
           # TODO: Implement TruffleHog or detect-secrets
           # For now, use basic git secrets check
           git log --all --pretty=format: --name-only | sort -u | xargs grep -i "password\|secret\|key" || true
-        continue-on-error: false  # Block on secret detection
-
-      # Unit Tests
-      - name: Install dependencies
-        run: npm install
+        continue-on-error: true  # Warning mode for training
 
       - name: Run unit tests
         run: npm test
@@ -155,8 +155,14 @@ jobs:
           wget -q https://github.com/open-policy-agent/conftest/releases/latest/download/conftest_linux_amd64.tar.gz
           tar xzf conftest_linux_amd64.tar.gz
           sudo mv conftest /usr/local/bin/
-          conftest test Dockerfile --policy ./policy || echo "⚠️  Policy violations found"
-        continue-on-error: true
+
+          echo "🔍 Testing Dockerfile against security policies..."
+          conftest test Dockerfile --policy ./policy || {
+            echo "⚠️  Policy violations found (warning mode for training)"
+            echo "📝 Review policy violations above to understand security best practices"
+            exit 0
+          }
+        continue-on-error: false
 
   # Stage 4: SonarQube (NEW - Manual gate)
   sonar:
