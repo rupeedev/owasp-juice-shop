@@ -430,11 +430,40 @@ jobs:
       - name: Application Health Check
         run: |
           echo "🏥 Checking application health..."
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:30080)
-          if [ "$HTTP_CODE" -eq 200 ]; then
-            echo "✅ Application is responding (HTTP $HTTP_CODE)"
-          else
-            echo "⚠️  Application returned HTTP $HTTP_CODE"
+          echo "Waiting for application to start responding..."
+
+          MAX_RETRIES=10
+          RETRY_COUNT=0
+          SUCCESS=false
+
+          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            echo "Attempt $((RETRY_COUNT + 1))/$MAX_RETRIES..."
+
+            # Capture both HTTP code and curl exit code
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:30080 2>&1 || echo "000")
+
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✅ Application is responding (HTTP $HTTP_CODE)"
+              SUCCESS=true
+              break
+            elif [ "$HTTP_CODE" = "000" ]; then
+              echo "⚠️  Connection failed - application not ready yet"
+            else
+              echo "⚠️  Application returned HTTP $HTTP_CODE"
+            fi
+
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+              echo "Waiting 10 seconds before retry..."
+              sleep 10
+            fi
+          done
+
+          if [ "$SUCCESS" = false ]; then
+            echo "❌ Application health check failed after $MAX_RETRIES attempts"
+            echo "Checking pod status:"
+            kubectl get pods -l app=juice-shop
+            kubectl describe pod -l app=juice-shop | tail -50
             exit 1
           fi
 
