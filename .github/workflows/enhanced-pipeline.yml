@@ -352,6 +352,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install kubectl (if not present)
+        run: |
+          if ! command -v kubectl &> /dev/null; then
+            echo "📥 Installing kubectl..."
+            curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+            chmod +x kubectl
+            sudo mv kubectl /usr/local/bin/
+            echo "✅ kubectl installed"
+          else
+            echo "✅ kubectl already installed"
+          fi
+
       - name: Wait for application readiness
         run: |
           echo "⏳ Waiting for application to be ready..."
