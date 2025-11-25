@@ -27,53 +27,76 @@ jobs:
         run: npm run lint
         continue-on-error: true
 
-  # Stage 2: Test with Security (enhanced)
-  test:
-    name: Test with SAST & Secret Detection
+  # Stage 2a: SAST (Parallel)
+  sast:
+    name: SAST - Static Analysis
     runs-on: ubuntu-latest
     needs: lint
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Full history for better analysis
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      # Install dependencies FIRST
       - name: Install dependencies
         run: npm install --prefer-offline --no-audit
 
-      # SAST - Static Application Security Testing
-      - name: Run SAST (CodeQL or Semgrep)
+      - name: Run SAST (npm audit)
         run: |
           echo "🔍 Running SAST scan..."
           # TODO: Implement CodeQL or Semgrep
           # For now, use npm audit as basic SAST
-          npm audit --audit-level=high || true
+          npm audit --audit-level=high || echo "⚠️  Vulnerabilities found (warning mode)"
         continue-on-error: true  # Warning mode for training
 
-      # Secret Detection
+  # Stage 2b: Secret Detection (Parallel)
+  secret-detection:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for secret scanning
+
       - name: Run Secret Detection
         run: |
-          echo "🔐 Scanning for secrets..."
+          echo "🔐 Scanning for secrets in git history..."
           # TODO: Implement TruffleHog or detect-secrets
           # For now, use basic git secrets check
-          git log --all --pretty=format: --name-only | sort -u | xargs grep -i "password\|secret\|key" || true
+          git log --all --pretty=format: --name-only | sort -u | xargs grep -i "password\|secret\|key" || echo "✅ No obvious secrets found"
         continue-on-error: true  # Warning mode for training
+
+  # Stage 2c: Unit Tests (Parallel)
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install --prefer-offline --no-audit
 
       - name: Run unit tests
         run: npm test
         continue-on-error: true  # Warning mode for training
 
-  # Stage 3: Security Scan (NEW - Parallel execution)
+  # Stage 3: Security Scan (Advanced - runs after all Stage 2 jobs)
   security-scan:
     name: Security Vulnerability Scanning
     runs-on: ubuntu-latest
-    needs: test
+    needs: [sast, secret-detection, test]
     strategy:
       fail-fast: false  # Run all scans even if one fails
       matrix:
@@ -140,11 +163,11 @@ jobs:
           retire --path . || echo "⚠️  Vulnerable libraries found (warning mode)"
         continue-on-error: true
 
-  # OPA/Conftest - Dockerfile policy check (separate job for clarity)
+  # OPA/Conftest - Dockerfile policy check (can run in parallel with Stage 2)
   dockerfile-policy:
     name: Dockerfile Policy Validation
     runs-on: ubuntu-latest
-    needs: test
+    needs: lint
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -352,16 +375,19 @@ jobs:
       - name: Success message
         run: |
           echo "🎉 Enhanced Pipeline completed successfully!"
-          echo "✅ All 8 stages completed:"
-          echo "   1. Lint ✓"
-          echo "   2. Test (with SAST + Secrets) ✓"
-          echo "   3. Security-Scan (parallel) ✓"
-          echo "   4. Sonar (manual gate) ✓"
-          echo "   5. Build ✓"
-          echo "   6. Push ✓"
-          echo "   7. Deploy ✓"
-          echo "   8. K8s-Security (DAST) ✓"
           echo ""
-          echo "🔒 Security scanning integrated into CI/CD pipeline"
+          echo "✅ Pipeline Stages (Parallel Execution Optimized):"
+          echo "   Stage 1: Lint ✓"
+          echo "   Stage 2: SAST + Secret Detection + Unit Tests (parallel) ✓"
+          echo "   Stage 3: Security Scan (Trivy, Gitleaks, RetireJS - parallel) ✓"
+          echo "           + Dockerfile Policy Validation ✓"
+          echo "   Stage 4: SonarQube Analysis ✓"
+          echo "   Stage 5: Build & Tag Docker Image ✓"
+          echo "   Stage 6: Push to Docker Hub ✓"
+          echo "   Stage 7: Deploy to Kubernetes ✓"
+          echo "   Stage 8: K8s Security (DAST with OWASP ZAP) ✓"
+          echo ""
+          echo "⚡ Parallel execution: SAST, Secrets, Tests, and Policy checks run simultaneously"
+          echo "🔒 Security scanning integrated at multiple stages"
           echo "📦 Application deployed to Kubernetes"
           echo "🌐 Access at: http://localhost:30080"
