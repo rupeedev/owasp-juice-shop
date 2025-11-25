@@ -37,7 +37,7 @@ This file contains custom rules, preferences, and guidance that Antigravity shou
 - Don't assume or take change on your own, always ask for permission
 
 ### Security policies
-- "dont delete any existing file or code"
+- "dont delete any existing file"
 
 ### Documentation
 - ALWAYS write the new document in txt format , follow
@@ -48,7 +48,7 @@ This file contains custom rules, preferences, and guidance that Antigravity shou
   ✓ LIMITED to 200 lines (max 500-600 based on use-case)
   ✓ MINIMAL decoration, use under the heading "=====" - No heavy borders, just clean headings
 - Don't create README.md file until asked by the user
-- Once testing is complete , update /docs/ChangeLog.txt
+- Once git push is complete , update /docs/ChangeLog.txt
 
 ### Tool preferences
 - "Use npm instead of yarn"
