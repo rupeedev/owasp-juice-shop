@@ -50,12 +50,31 @@ jobs:
         uses: github/codeql-action/analyze@v4
         with:
           category: "/language:javascript"
+          output: sarif-results
+          upload: false  # We'll upload manually to get artifact
         continue-on-error: true  # Warning mode for training
+
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: sarif-results
+        continue-on-error: true
+
+      - name: Upload CodeQL Results as Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: codeql-results
+          path: sarif-results/**/*.sarif
+          retention-days: 30
 
       - name: SAST scan complete
         run: |
           echo "✅ CodeQL SAST analysis completed"
-          echo "📊 Results available in Security tab > Code scanning alerts"
+          echo "📊 Results available in:"
+          echo "   1. GitHub Security tab > Code scanning alerts"
+          echo "   2. Download 'codeql-results' artifact from this workflow run"
           echo "⚠️  Note: Juice Shop is intentionally vulnerable - findings are expected"
 
   # Stage 2b: Secret Detection (Parallel)
