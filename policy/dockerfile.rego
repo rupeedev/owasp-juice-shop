@@ -2,61 +2,62 @@ package main
 
 # Dockerfile Security Policy
 # Open Policy Agent (OPA) / Conftest policy for Dockerfile validation
+# Updated to OPA Rego v1 syntax (OPA 0.50+)
 
 # Deny using 'latest' tag for base images
-deny[msg] {
+deny contains msg if {
   input[i].Cmd == "from"
   val := split(input[i].Value[0], ":")
   contains(val[1], "latest")
-  msg = sprintf("Line %d: Avoid using 'latest' tag for base images - use specific versions for reproducibility", [i])
+  msg := sprintf("Line %d: Avoid using 'latest' tag for base images - use specific versions for reproducibility", [i])
 }
 
 # Deny running as root (no USER directive)
-deny[msg] {
+deny contains msg if {
   not has_user_directive
-  msg = "No USER directive found - container will run as root (security risk)"
+  msg := "No USER directive found - container will run as root (security risk)"
 }
 
 # Warn if no HEALTHCHECK is defined
-warn[msg] {
+warn contains msg if {
   not has_healthcheck_directive
-  msg = "No HEALTHCHECK directive found - consider adding health checks for better container orchestration"
+  msg := "No HEALTHCHECK directive found - consider adding health checks for better container orchestration"
 }
 
 # Warn if using ADD instead of COPY
-warn[msg] {
+warn contains msg if {
   input[i].Cmd == "add"
-  msg = sprintf("Line %d: Consider using COPY instead of ADD unless you need tar extraction or URL fetching", [i])
+  msg := sprintf("Line %d: Consider using COPY instead of ADD unless you need tar extraction or URL fetching", [i])
 }
 
 # Deny if exposing privileged ports (< 1024)
-deny[msg] {
+deny contains msg if {
   input[i].Cmd == "expose"
   port := to_number(input[i].Value[0])
   port < 1024
-  msg = sprintf("Line %d: Avoid exposing privileged port %d (ports < 1024 require root)", [i, port])
+  msg := sprintf("Line %d: Avoid exposing privileged port %d (ports < 1024 require root)", [i, port])
 }
 
 # Warn if no maintainer/label metadata
-warn[msg] {
+warn contains msg if {
   not has_label_directive
   not has_maintainer_directive
-  msg = "No LABEL or MAINTAINER directive found - consider adding metadata for documentation"
+  msg := "No LABEL or MAINTAINER directive found - consider adding metadata for documentation"
 }
 
 # Helper functions
-has_user_directive {
+has_user_directive if {
   input[_].Cmd == "user"
 }
 
-has_healthcheck_directive {
+has_healthcheck_directive if {
   input[_].Cmd == "healthcheck"
 }
 
-has_label_directive {
+has_label_directive if {
   input[_].Cmd == "label"
 }
 
-has_maintainer_directive {
+has_maintainer_directive if {
   input[_].Cmd == "maintainer"
 }

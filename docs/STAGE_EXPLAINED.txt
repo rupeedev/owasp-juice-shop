@@ -5,12 +5,14 @@ PIPELINE EXPLAINED
 
 Key Insight:
 
-  • npm audit  → Finds vulnerable dependencies (supply chain)
-  • CodeQL     → Finds vulnerable code (application logic)
-  • TruffleHog → Finds leaked secrets (credentials)
-  • RetireJS   → Finds vulnerable JavaScript libraries (client + server)
-  • Gitleaks   → Finds secrets in git history (commit scanning)
-  • Trivy      → Finds container vulnerabilities (base images + OS packages)
+  • npm audit     → Finds vulnerable dependencies (supply chain)
+  • CodeQL        → Finds vulnerable code (application logic)
+  • TruffleHog    → Finds leaked secrets (credentials)
+  • RetireJS      → Finds vulnerable JavaScript libraries (client + server)
+  • Gitleaks      → Finds secrets in git history (commit scanning)
+  • Trivy         → Finds container vulnerabilities (base images + OS packages)
+  • OPA/Conftest  → Finds Dockerfile policy violations (configuration security)
+  • K8s Manifest  → Finds Kubernetes security misconfigurations (deployment security)
 
 TL;DR
 -----
@@ -977,5 +979,314 @@ npm audit (app dependencies) or CodeQL (code), Trivy focuses on the container
 runtime environment - base images, system libraries, and OS packages.
 
 
+================================================================================
+
+================================================================================
+
+STAGE 3d: Dockerfile Policy Validation (OPA/Conftest)
+======================================================
+
+TL;DR
+-----
+OPA/Conftest = Policy-as-Code tool that validates Dockerfile against security
+best practices. Think of it as a security checklist enforcer that prevents
+insecure container configurations before build.
+
+
+Command Execution:
+------------------
+Run Conftest via Docker with custom OPA policy:
+
+  # Pull Conftest Docker image
+  docker pull openpolicyagent/conftest:latest
+
+  # Test Dockerfile against comprehensive security policy
+  docker run --rm -v $(pwd):/project \
+    openpolicyagent/conftest:latest \
+    test --policy ./docs/docker/dockerfile-security.rego Dockerfile
+
+Meaning:
+  • test                  → Validation mode (checks against policies)
+  • --policy <path>       → Path to OPA Rego policy file
+  • Dockerfile            → Target file to validate
+  • Docker-based          → No installation required
+  • Policy-as-Code        → Declarative security rules in Rego language
+
+
+
+
+PURPOSE IN CI/CD PIPELINE
+============================
+
+Why OPA/Conftest in Stage 3d?
+------------------------------
+✓ Shift-left security           → Catch misconfigurations before build
+✓ Enforce best practices        → Automated Dockerfile security standards
+✓ Policy-as-Code                → Version-controlled security rules
+✓ Fast validation               → Runs in seconds (static analysis)
+✓ No image build required       → Validates Dockerfile syntax only
+✓ Prevent configuration drift   → Consistent security across all images
+
+Pipeline Position:
+------------------
+Stage 3d: Dockerfile Policy (Parallel with npm-audit, RetireJS, Gitleaks)
+             ↓
+         Runs after Stage 2 (SAST, Secrets, Tests)
+
+
+INTERPRETATION OF OUTPUT
+==========================
+
+Result: FAILURE (policy violations found, warning mode continues)
+------------------------------------------------------------------
+Conftest validates Dockerfile against 9 comprehensive security policies.
+
+Security Policies Enforced:
+  ✓ No secrets in ENV variables
+  ✓ Use trusted base images only
+  ✓ No 'latest' tag for base images
+  ✓ Avoid curl bashing
+  ✓ No system package upgrades in Dockerfile
+  ✓ Use COPY instead of ADD
+  ✓ Don't run as root user
+  ✓ Don't use sudo command
+  ✓ Use multi-stage builds
+
+Typical Juice Shop Findings (intentionally insecure Dockerfile):
+
+Console Output:
+  📋 Running OPA/Conftest policy validation...
+  🔍 Testing Dockerfile against comprehensive security policies...
+
+  FAIL - Dockerfile - main - Do not run as root, use USER instead
+  WARN - Dockerfile - main - Line: 15: Do not upgrade your system packages: run npm install
+  FAIL - Dockerfile - main - You COPY, but do not appear to use multi-stage builds...
+
+  3 tests, 0 passed, 1 warning, 2 failures
+
+  ⚠️  Policy violations found (exit code: 1)
+  📝 This is expected for training - Juice Shop is intentionally vulnerable
+  📚 Reference: https://cloudberry.engineering/article/dockerfile-security-best-practices/
+  ✅ Pipeline continues in warning mode
+
+Policy Violations Explained:
+
+✗ FAIL: Do not run as root, use USER instead
+  Issue: No USER directive specified in Dockerfile
+  Risk: Container runs as root (UID 0), full system privileges
+  Fix: Add "USER node" or "USER 1000:1000" before CMD
+
+✗ FAIL: You COPY, but do not appear to use multi-stage builds
+  Issue: Single-stage build detected
+  Risk: Includes build tools in final image (larger attack surface)
+  Fix: Use multi-stage builds with "COPY --from=builder"
+
+⚠ WARN: Do not upgrade your system packages
+  Issue: Dockerfile runs "npm install" (package manager)
+  Risk: Non-deterministic builds, unexpected package versions
+  Fix: Pin all package versions in package-lock.json
+
+What this means:
+• 2 failures, 1 warning detected in Dockerfile configuration
+• Root user violation is high security risk
+• Missing multi-stage builds increases image size and attack surface
+• Pipeline continues (continue-on-error: true for training)
+• For Juice Shop: Intentional policy violations for demonstration
+
+
+================================================================================
+
+Key Insight: OPA/Conftest validates Dockerfile CONFIGURATION (not built images),
+catching misconfigurations BEFORE build stage. It's complementary to Trivy:
+Conftest checks Dockerfile syntax/policies, Trivy scans built image vulnerabilities.
+
+OPA/Conftest vs Trivy - Key Differences
+========================================
+
+  | Aspect            | OPA/Conftest            | Trivy                      |
+  |-------------------|-------------------------|----------------------------|
+  | Scan Target       | Dockerfile text         | Built Docker image         |
+  | Analysis Type     | Policy-as-Code          | Vulnerability database     |
+  | Focus             | Configuration security  | OS package vulnerabilities |
+  | When It Runs      | Before build            | After build                |
+  | Speed             | Very fast (<1 sec)      | Fast (5-10 sec)            |
+  | Detects           | Policy violations       | Known CVEs                 |
+  | Customizable      | ✅ Custom Rego policies | ⚠️  Limited (severity)     |
+  | False Positives   | Low (deterministic)     | Low (CVE database)         |
+
+When to use each:
+  • Conftest   → Prevent bad Dockerfile patterns (policy enforcement)
+  • Trivy      → Detect vulnerable packages in built images (CVE scanning)
+
+Both run in the pipeline for defense-in-depth:
+  Stage 3d: Conftest (validate Dockerfile policies)
+  Stage 5b: Trivy (scan built image for CVEs)
+
+================================================================================
+
+
+================================================================================
+
+================================================================================
+
+STAGE 8a: K8s Manifest Security Scanning
+=========================================
+
+TL;DR
+-----
+K8s Manifest Security = Policy-based validation of Kubernetes YAML files for
+security misconfigurations. Think of it as a pre-deployment security checklist
+that catches insecure K8s configs before they reach the cluster.
+
+
+Command Execution:
+------------------
+Run Conftest via Docker against K8s manifests:
+
+  # Scan Deployment manifest
+  docker run --rm -v $(pwd):/project \
+    openpolicyagent/conftest:latest \
+    test --policy ./policy kind-k8s-cluster/juice-shop-deployment.yaml
+
+  # Scan Service manifest
+  docker run --rm -v $(pwd):/project \
+    openpolicyagent/conftest:latest \
+    test --policy ./policy kind-k8s-cluster/juice-shop-service.yaml
+
+Meaning:
+  • test                  → Validation mode (checks against policies)
+  • --policy ./policy     → Path to OPA Rego policy directory
+  • <manifest.yaml>       → K8s YAML files to validate
+  • Docker-based          → No installation required
+  • Policy-as-Code        → Declarative security rules in Rego
+
+
+
+
+PURPOSE IN CI/CD PIPELINE
+============================
+
+Why K8s Manifest Security in Stage 8a?
+---------------------------------------
+✓ Pre-deployment validation   → Catch misconfigurations before apply
+✓ Enforce security standards  → Automated K8s best practices
+✓ Prevent privilege escalation → Check runAsNonRoot, securityContext
+✓ Resource governance         → Verify resource limits and requests
+✓ Service exposure control    → Validate service type configurations
+✓ Fast feedback loop          → Fails before cluster deployment
+
+Pipeline Position:
+------------------
+Stage 8a: K8s Manifest Security (Parallel with OWASP ZAP, Security Headers, Noir)
+             ↓
+         Runs after Stage 7 (Deploy to Kubernetes)
+         Runs in parallel with DAST tools
+
+
+INTERPRETATION OF OUTPUT
+==========================
+
+Result: WARNING (policy violations found, deployment continues)
+----------------------------------------------------------------
+Conftest validates K8s manifests against security best practices.
+
+Security Policies Checked:
+  • Containers running as non-root (runAsNonRoot)
+  • Security context settings
+  • Service type configurations
+  • Resource limits and requests
+
+Typical Juice Shop Findings (intentionally insecure manifests):
+
+Console Output:
+  🔐 Scanning Kubernetes manifests for security issues...
+
+  === Scanning K8s Deployment Manifest ===
+  FAIL - kind-k8s-cluster/juice-shop-deployment.yaml - main - Container 'juice-shop'
+         does not set securityContext.runAsNonRoot
+  FAIL - kind-k8s-cluster/juice-shop-deployment.yaml - main - Container 'juice-shop'
+         does not set securityContext.allowPrivilegeEscalation=false
+  WARN - kind-k8s-cluster/juice-shop-deployment.yaml - main - No resource limits defined
+         (could impact cluster stability)
+
+  3 tests, 0 passed, 1 warning, 2 failures
+  ⚠️  Policy violations in deployment manifest
+
+  === Scanning K8s Service Manifest ===
+  FAIL - kind-k8s-cluster/juice-shop-service.yaml - main - Service uses LoadBalancer
+         type (exposes publicly, consider NodePort or ClusterIP)
+
+  1 test, 0 passed, 0 warnings, 1 failure
+  ⚠️  Policy violations in service manifest
+
+  📝 K8s manifest scan checks for:
+     - Containers running as non-root (runAsNonRoot)
+     - Security context settings
+     - Service type configurations
+     - Resource limits and requests
+  📚 Reference: Best practices from DevSecOps patterns
+
+Policy Violations Explained:
+
+✗ FAIL: Container does not set runAsNonRoot
+  Issue: No securityContext.runAsNonRoot specified
+  Risk: Pod can run as root (UID 0) with elevated privileges
+  Fix: Add to deployment spec:
+       securityContext:
+         runAsNonRoot: true
+         runAsUser: 1000
+
+✗ FAIL: allowPrivilegeEscalation not set to false
+  Issue: Container can gain more privileges than parent
+  Risk: Privilege escalation attacks possible
+  Fix: Add to container securityContext:
+       securityContext:
+         allowPrivilegeEscalation: false
+
+✗ FAIL: Service uses LoadBalancer type
+  Issue: Service exposes publicly via cloud load balancer
+  Risk: Direct internet exposure without proper controls
+  Fix: Use NodePort or ClusterIP with Ingress controller
+
+What this means:
+• Multiple security misconfigurations in K8s manifests
+• Containers running without security restrictions
+• Public service exposure without proper controls
+• Pipeline continues (continue-on-error: true for training)
+• For Juice Shop: Intentional misconfigurations for demonstration
+
+
+
+================================================================================
+
+Key Insight: K8s Manifest Security scans YAML CONFIGURATION files (not running
+pods), catching security misconfigurations BEFORE deployment. It's complementary
+to runtime security tools: Conftest validates manifests, runtime tools monitor
+actual pod behavior. Defense-in-depth: validate configs (Stage 8a) → deploy
+(Stage 7) → scan runtime (DAST in Stage 8b-d).
+
+K8s Manifest Security vs Container Scanning - Key Differences
+==============================================================
+
+  | Aspect            | K8s Manifest Scan       | Container Scan (Trivy)     |
+  |-------------------|-------------------------|----------------------------|
+  | Scan Target       | K8s YAML files          | Docker images              |
+  | Analysis Type     | Policy-as-Code          | Vulnerability database     |
+  | Focus             | Deployment security     | Image vulnerabilities      |
+  | When It Runs      | Before/after deployment | After image build          |
+  | Speed             | Very fast (<2 sec)      | Fast (5-10 sec)            |
+  | Detects           | Misconfigurations       | Known CVEs                 |
+  | Examples          | runAsNonRoot, resources | OS package vulnerabilities |
+  | Scope             | K8s orchestration layer | Container image layer      |
+
+When to use each:
+  • K8s Manifest   → Prevent insecure K8s configurations (policy enforcement)
+  • Trivy          → Detect vulnerable packages in images (CVE scanning)
+
+Both run in the pipeline for defense-in-depth:
+  Stage 5b: Trivy (scan built Docker image for CVEs)
+  Stage 8a: K8s Manifest (validate K8s deployment configs)
+
+================================================================================
 
 
