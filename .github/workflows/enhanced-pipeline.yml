@@ -739,6 +739,17 @@ jobs:
             sudo mv kubectl /usr/local/bin/
           fi
 
+      - name: Verify Kind cluster connectivity
+        run: |
+          echo "🔍 Checking Kind cluster status..."
+          kubectl cluster-info
+          kubectl get nodes
+
+          echo ""
+          echo "📋 Checking existing deployments..."
+          kubectl get deployments -A || true
+          kubectl get pods -A || true
+
       - name: Apply manifests
         run: |
           kubectl apply -f kind-k8s-cluster/juice-shop-deployment.yaml
@@ -758,9 +769,37 @@ jobs:
           kubectl get svc juice-shop
           kubectl get deployment juice-shop
 
-      - name: Get service endpoint
+      - name: Get service endpoint and test connectivity
         run: |
-          echo "🌐 Application deployed at: http://localhost:30080"
+          echo "🌐 Getting Kind cluster access information..."
+
+          # Get the Kind node IP (Docker container IP)
+          KIND_NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+          echo "Kind Node IP: $KIND_NODE_IP"
+
+          # For Kind cluster, the service is accessible via Docker network
+          # Test multiple access methods
+          echo ""
+          echo "Testing connectivity methods:"
+
+          # Method 1: Via localhost (Kind port mapping)
+          echo "1. Testing localhost:30080..."
+          curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" http://localhost:30080 || echo "localhost:30080 not accessible"
+
+          # Method 2: Via Kind node IP
+          echo "2. Testing ${KIND_NODE_IP}:30080..."
+          curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" http://${KIND_NODE_IP}:30080 || echo "${KIND_NODE_IP}:30080 not accessible"
+
+          # Method 3: Via Kind container name
+          echo "3. Testing kind-control-plane:30080..."
+          curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" http://kind-control-plane:30080 || echo "kind-control-plane:30080 not accessible"
+
+          # Store the working endpoint for subsequent stages
+          echo ""
+          echo "📍 Application endpoints:"
+          echo "   - NodePort: http://localhost:30080"
+          echo "   - Kind Node: http://${KIND_NODE_IP}:30080"
+          echo "   - Container: http://kind-control-plane:30080"
         id: endpoint
 
   # Stage 8: K8s Security (NEW - DAST with Parallel Execution)
@@ -838,9 +877,43 @@ jobs:
           sleep 30
           kubectl wait --for=condition=ready pod -l app=juice-shop --timeout=120s
 
-      - name: Application Health Check
+      - name: Detect Kind cluster access method
+        id: detect-access
         run: |
-          echo "🏥 Checking application health..."
+          echo "🔍 Detecting best access method for Kind cluster..."
+
+          # Get Kind node IP
+          KIND_NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+          echo "Kind Node IP: $KIND_NODE_IP"
+
+          # Test access methods in order of preference
+          APP_URL=""
+
+          # Method 1: localhost (if Kind has port mapping)
+          if curl -s -o /dev/null -w "%{http_code}" http://localhost:30080 2>/dev/null | grep -q "200"; then
+            APP_URL="http://localhost:30080"
+            echo "✅ Access via localhost:30080"
+          # Method 2: Kind node IP
+          elif curl -s -o /dev/null -w "%{http_code}" http://${KIND_NODE_IP}:30080 2>/dev/null | grep -q "200"; then
+            APP_URL="http://${KIND_NODE_IP}:30080"
+            echo "✅ Access via ${KIND_NODE_IP}:30080"
+          # Method 3: Docker container name
+          elif curl -s -o /dev/null -w "%{http_code}" http://kind-control-plane:30080 2>/dev/null | grep -q "200"; then
+            APP_URL="http://kind-control-plane:30080"
+            echo "✅ Access via kind-control-plane:30080"
+          else
+            echo "❌ No accessible endpoint found"
+            APP_URL="http://localhost:30080"  # Fallback
+          fi
+
+          echo "app_url=$APP_URL" >> $GITHUB_OUTPUT
+          echo "Selected URL: $APP_URL"
+
+      - name: Application Health Check
+        env:
+          APP_URL: ${{ steps.detect-access.outputs.app_url }}
+        run: |
+          echo "🏥 Checking application health at ${APP_URL}..."
           echo "Waiting for application to start responding..."
 
           MAX_RETRIES=10
@@ -851,7 +924,7 @@ jobs:
             echo "Attempt $((RETRY_COUNT + 1))/$MAX_RETRIES..."
 
             # Capture both HTTP code and curl exit code
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:30080 2>&1 || echo "000")
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" ${APP_URL} 2>&1 || echo "000")
 
             if [ "$HTTP_CODE" = "200" ]; then
               echo "✅ Application is responding (HTTP $HTTP_CODE)"
@@ -881,26 +954,30 @@ jobs:
 
       - name: Run Security Headers Analysis
         if: always()
+        env:
+          APP_URL: ${{ steps.detect-access.outputs.app_url }}
         run: |
           set +e  # Don't exit on error
 
           echo "🔒 Analyzing HTTP security headers..." | tee security-headers-scan.txt
+          echo "Target: ${APP_URL}" | tee -a security-headers-scan.txt
           echo "" | tee -a security-headers-scan.txt
 
           # Check if application is accessible
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:30080 2>&1 || echo "000")
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" ${APP_URL} 2>&1 || echo "000")
 
           if [ "$HTTP_CODE" != "200" ]; then
             echo "❌ Application not accessible (HTTP $HTTP_CODE)" | tee -a security-headers-scan.txt
             echo "" | tee -a security-headers-scan.txt
             echo "=== Scan Status ===" | tee -a security-headers-scan.txt
             echo "The security headers scan could not be completed because the application" | tee -a security-headers-scan.txt
-            echo "is not accessible at http://localhost:30080" | tee -a security-headers-scan.txt
+            echo "is not accessible at ${APP_URL}" | tee -a security-headers-scan.txt
             echo "" | tee -a security-headers-scan.txt
             echo "Possible reasons:" | tee -a security-headers-scan.txt
             echo "  - Application not fully deployed" | tee -a security-headers-scan.txt
             echo "  - Pod not in ready state" | tee -a security-headers-scan.txt
             echo "  - Service not exposing port correctly" | tee -a security-headers-scan.txt
+            echo "  - Kind cluster networking issue" | tee -a security-headers-scan.txt
             echo "" | tee -a security-headers-scan.txt
             echo "Check pod status:" | tee -a security-headers-scan.txt
             kubectl get pods -l app=juice-shop 2>&1 | tee -a security-headers-scan.txt || true
@@ -910,11 +987,11 @@ jobs:
           echo "✅ Application accessible (HTTP $HTTP_CODE)" | tee -a security-headers-scan.txt
           echo "" | tee -a security-headers-scan.txt
           echo "=== Current Security Headers ===" | tee -a security-headers-scan.txt
-          curl -s -D - http://localhost:30080 -o /dev/null 2>&1 | grep -E "^X-|^Content-Security|^Strict-Transport" | tee -a security-headers-scan.txt || echo "(No security headers found)" | tee -a security-headers-scan.txt
+          curl -s -D - ${APP_URL} -o /dev/null 2>&1 | grep -E "^X-|^Content-Security|^Strict-Transport" | tee -a security-headers-scan.txt || echo "(No security headers found)" | tee -a security-headers-scan.txt
           echo "" | tee -a security-headers-scan.txt
           echo "=== Security Header Assessment ===" | tee -a security-headers-scan.txt
 
-          HEADERS=$(curl -s -D - http://localhost:30080 -o /dev/null 2>&1)
+          HEADERS=$(curl -s -D - ${APP_URL} -o /dev/null 2>&1)
 
           # Check for present headers
           echo "$HEADERS" | grep -q "X-Content-Type-Options" && echo "✓ X-Content-Type-Options: Present" | tee -a security-headers-scan.txt || echo "✗ X-Content-Type-Options: Missing" | tee -a security-headers-scan.txt
@@ -961,29 +1038,87 @@ jobs:
           sleep 30
           kubectl wait --for=condition=ready pod -l app=juice-shop --timeout=120s
 
+      - name: Detect Kind cluster access method for ZAP
+        id: detect-zap-access
+        run: |
+          echo "🔍 Detecting best access method for ZAP scan..."
+
+          # Get Kind node IP
+          KIND_NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+          echo "Kind Node IP: $KIND_NODE_IP"
+
+          # Get Kind container name
+          KIND_CONTAINER=$(docker ps --filter "name=kind-control-plane" --format "{{.Names}}" | head -1)
+          echo "Kind Container: $KIND_CONTAINER"
+
+          # For ZAP running in Docker, we need to use an address accessible from Docker network
+          # Test access methods in order of preference
+          ZAP_TARGET_URL=""
+          ACCESS_METHOD=""
+
+          # Method 1: Kind container IP (most reliable for Docker-to-Docker)
+          if [ -n "$KIND_NODE_IP" ]; then
+            # Test if accessible
+            if curl -s -o /dev/null -w "%{http_code}" http://${KIND_NODE_IP}:30080 2>/dev/null | grep -q "200"; then
+              ZAP_TARGET_URL="http://${KIND_NODE_IP}:30080"
+              ACCESS_METHOD="kind-node-ip"
+              echo "✅ Will use Kind Node IP for ZAP: ${KIND_NODE_IP}:30080"
+            fi
+          fi
+
+          # Method 2: host.docker.internal (works on Docker Desktop)
+          if [ -z "$ZAP_TARGET_URL" ]; then
+            if docker run --rm curlimages/curl:latest curl -s -o /dev/null -w "%{http_code}" http://host.docker.internal:30080 2>/dev/null | grep -q "200"; then
+              ZAP_TARGET_URL="http://host.docker.internal:30080"
+              ACCESS_METHOD="host-docker-internal"
+              echo "✅ Will use host.docker.internal for ZAP"
+            fi
+          fi
+
+          # Method 3: Kind container name via Docker network
+          if [ -z "$ZAP_TARGET_URL" ] && [ -n "$KIND_CONTAINER" ]; then
+            ZAP_TARGET_URL="http://${KIND_CONTAINER}:30080"
+            ACCESS_METHOD="kind-container-name"
+            echo "✅ Will use Kind container name for ZAP: ${KIND_CONTAINER}:30080"
+          fi
+
+          # Fallback: Use Kind node IP even if test failed
+          if [ -z "$ZAP_TARGET_URL" ]; then
+            ZAP_TARGET_URL="http://${KIND_NODE_IP}:30080"
+            ACCESS_METHOD="fallback-kind-ip"
+            echo "⚠️  Using fallback: ${KIND_NODE_IP}:30080"
+          fi
+
+          echo "zap_target_url=$ZAP_TARGET_URL" >> $GITHUB_OUTPUT
+          echo "access_method=$ACCESS_METHOD" >> $GITHUB_OUTPUT
+          echo "kind_network=$(docker network ls --filter name=kind --format '{{.Name}}' | head -1)" >> $GITHUB_OUTPUT
+          echo "Selected ZAP target: $ZAP_TARGET_URL (Method: $ACCESS_METHOD)"
+
       - name: Application Health Check
         run: |
-          echo "🏥 Checking application health..."
-          echo "Waiting for application to start responding..."
+          echo "🏥 Checking application health from runner host..."
 
           MAX_RETRIES=10
           RETRY_COUNT=0
           SUCCESS=false
 
+          # Get Kind node IP for health check
+          KIND_NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
             echo "Attempt $((RETRY_COUNT + 1))/$MAX_RETRIES..."
 
-            # Capture both HTTP code and curl exit code
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:30080 2>&1 || echo "000")
-
-            if [ "$HTTP_CODE" = "200" ]; then
-              echo "✅ Application is responding (HTTP $HTTP_CODE)"
+            # Try multiple endpoints
+            if curl -s -o /dev/null -w "%{http_code}" http://localhost:30080 2>/dev/null | grep -q "200"; then
+              echo "✅ Application accessible via localhost:30080"
               SUCCESS=true
               break
-            elif [ "$HTTP_CODE" = "000" ]; then
-              echo "⚠️  Connection failed - application not ready yet"
+            elif curl -s -o /dev/null -w "%{http_code}" http://${KIND_NODE_IP}:30080 2>/dev/null | grep -q "200"; then
+              echo "✅ Application accessible via ${KIND_NODE_IP}:30080"
+              SUCCESS=true
+              break
             else
-              echo "⚠️  Application returned HTTP $HTTP_CODE"
+              echo "⚠️  Application not ready yet"
             fi
 
             RETRY_COUNT=$((RETRY_COUNT + 1))
@@ -1004,10 +1139,16 @@ jobs:
 
       - name: Run OWASP ZAP Baseline Scan
         if: always()
+        env:
+          ZAP_TARGET_URL: ${{ steps.detect-zap-access.outputs.zap_target_url }}
+          ACCESS_METHOD: ${{ steps.detect-zap-access.outputs.access_method }}
+          KIND_NETWORK: ${{ steps.detect-zap-access.outputs.kind_network }}
         run: |
           set +e  # Don't exit on error
 
           echo "🔍 Running OWASP ZAP baseline scan..."
+          echo "Target: ${ZAP_TARGET_URL}"
+          echo "Access Method: ${ACCESS_METHOD}"
           echo "Note: This may take 2-5 minutes..."
 
           # Check if Docker is available
@@ -1036,42 +1177,60 @@ jobs:
             exit 0
           fi
 
-          # Check if application is accessible
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:30080 2>&1 || echo "000")
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "❌ Application not accessible (HTTP $HTTP_CODE)"
-            echo "<html><body><h1>ZAP Scan - Application Not Accessible</h1>" > zap-report.html
-            echo "<p>The application at http://localhost:30080 is not accessible (HTTP $HTTP_CODE).</p>" >> zap-report.html
-            echo "<h2>Pod Status</h2><pre>" >> zap-report.html
-            kubectl get pods -l app=juice-shop 2>&1 | sed 's/</\&lt;/g; s/>/\&gt;/g' >> zap-report.html || true
-            echo "</pre></body></html>" >> zap-report.html
-            echo "⚠️  Created diagnostic report"
-            exit 0
-          fi
-
-          echo "✅ Docker available, daemon running, application accessible"
+          echo "✅ Docker available and daemon running"
 
           # Create directory for ZAP reports
           mkdir -p ${{ github.workspace }}/zap-reports
 
-          # Use correct ZAP docker image with volume mount
-          timeout 300 docker run --rm --network host \
+          # Determine network mode
+          if [ "$ACCESS_METHOD" = "kind-node-ip" ] || [ "$ACCESS_METHOD" = "fallback-kind-ip" ]; then
+            # Use host network mode for Kind node IP access
+            NETWORK_MODE="host"
+            echo "Using Docker network mode: host"
+          elif [ -n "$KIND_NETWORK" ]; then
+            # Use Kind network for container-to-container communication
+            NETWORK_MODE="$KIND_NETWORK"
+            echo "Using Docker network mode: $KIND_NETWORK"
+          else
+            # Fallback to host network
+            NETWORK_MODE="host"
+            echo "Using Docker network mode: host (fallback)"
+          fi
+
+          # Run ZAP scan with appropriate network configuration
+          echo "Starting ZAP scan targeting: ${ZAP_TARGET_URL}"
+          timeout 300 docker run --rm --network ${NETWORK_MODE} \
             -v ${{ github.workspace }}/zap-reports:/zap/wrk:rw \
             zaproxy/zap-stable:latest \
-            zap-baseline.py -t http://localhost:30080 -I -r zap-report.html \
-            || echo "⚠️  Security issues found or scan timed out (warning mode)"
+            zap-baseline.py -t ${ZAP_TARGET_URL} -I -r zap-report.html \
+            || ZAP_EXIT_CODE=$?
+
+          if [ -n "$ZAP_EXIT_CODE" ]; then
+            echo "⚠️  ZAP scan exited with code: $ZAP_EXIT_CODE (security issues found or scan timed out - warning mode)"
+          fi
 
           # Move report to workspace root for artifact upload
           if [ -f "${{ github.workspace }}/zap-reports/zap-report.html" ]; then
             mv ${{ github.workspace }}/zap-reports/zap-report.html ${{ github.workspace }}/
             echo "✅ ZAP report saved to workspace"
           else
-            echo "⚠️  ZAP report not generated, creating placeholder"
-            echo "<html><body><h1>ZAP scan did not complete</h1>" > ${{ github.workspace }}/zap-report.html
-            echo "<p>The scan may have timed out or encountered an error.</p></body></html>" >> ${{ github.workspace }}/zap-report.html
+            echo "⚠️  ZAP report not generated, creating diagnostic report"
+            echo "<html><body><h1>ZAP Scan - Report Not Generated</h1>" > ${{ github.workspace }}/zap-report.html
+            echo "<p>The ZAP scan did not generate a report.</p>" >> ${{ github.workspace }}/zap-report.html
+            echo "<h2>Configuration Used</h2><ul>" >> ${{ github.workspace }}/zap-report.html
+            echo "<li>Target URL: ${ZAP_TARGET_URL}</li>" >> ${{ github.workspace }}/zap-report.html
+            echo "<li>Access Method: ${ACCESS_METHOD}</li>" >> ${{ github.workspace }}/zap-report.html
+            echo "<li>Network Mode: ${NETWORK_MODE}</li>" >> ${{ github.workspace }}/zap-report.html
+            echo "<li>Exit Code: ${ZAP_EXIT_CODE:-unknown}</li>" >> ${{ github.workspace }}/zap-report.html
+            echo "</ul>" >> ${{ github.workspace }}/zap-report.html
+            echo "<h2>Possible Issues</h2><ul>" >> ${{ github.workspace }}/zap-report.html
+            echo "<li>Target application not accessible from ZAP container</li>" >> ${{ github.workspace }}/zap-report.html
+            echo "<li>Network configuration mismatch</li>" >> ${{ github.workspace }}/zap-report.html
+            echo "<li>Scan timeout (5 minutes)</li>" >> ${{ github.workspace }}/zap-report.html
+            echo "</ul></body></html>" >> ${{ github.workspace }}/zap-report.html
           fi
 
-          echo "📊 ZAP scan completed"
+          echo "📊 ZAP scan process completed"
           echo "⚠️  Findings are expected for intentionally vulnerable application"
         continue-on-error: true
 
@@ -1083,14 +1242,20 @@ jobs:
           path: zap-report.html
           retention-days: 30
 
-  # Stage 8d: OWASP Noir Attack Surface Scan (Parallel - doesn't need app)
-  noir-attack-surface-scan:
+  # Stage 9: OWASP Noir - Attack Surface Detection & Analysis
+  noir-attack-surface-analysis:
     name: OWASP Noir - Attack Surface Detection
     runs-on: ubuntu-latest
-    needs: deploy
+    needs: [k8s-manifest-scan, security-headers-scan, owasp-zap-scan]
+    if: always()  # Run even if previous stages have failures
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Install jq for JSON processing
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y jq
 
       - name: Run OWASP Noir Attack Surface Scan
         run: |
@@ -1106,35 +1271,57 @@ jobs:
             ghcr.io/owasp-noir/noir:latest \
             noir -b /target -f json > noir-results.json 2>&1 || echo "⚠️  Noir scan completed with findings"
 
-          # Display summary
-          if [ -f "noir-results.json" ]; then
+          # Check if results file exists and has content
+          if [ -f "noir-results.json" ] && [ -s "noir-results.json" ]; then
             echo "✅ Noir scan completed successfully" | tee -a noir-scan.txt
             echo "" | tee -a noir-scan.txt
 
-            # Extract endpoint count
-            ENDPOINT_COUNT=$(cat noir-results.json | grep -o '"url"' | wc -l)
+            # Extract endpoint count using jq
+            ENDPOINT_COUNT=$(jq '.endpoints | length' noir-results.json 2>/dev/null || echo "0")
             echo "📊 Scan Results:" | tee -a noir-scan.txt
             echo "   Total Endpoints Discovered: $ENDPOINT_COUNT" | tee -a noir-scan.txt
             echo "" | tee -a noir-scan.txt
 
-            # Sample endpoints (first 10)
-            echo "=== Sample Discovered Endpoints (First 10) ===" | tee -a noir-scan.txt
-            cat noir-results.json | grep -o '"url":"[^"]*"' | head -10 | sed 's/"url":"/  • /' | sed 's/"$//' | tee -a noir-scan.txt
+            # Display endpoint details (first 20 endpoints with methods and parameters)
+            echo "=== Discovered Endpoints (First 20) ===" | tee -a noir-scan.txt
+            jq -r '.endpoints[:20] | .[] | "  • [\(.method)] \(.url)\n    Params: \(if .params | length > 0 then (.params | map(.name) | join(", ")) else "none" end)\n    File: \(.details.code_paths[0].path // "unknown"):\(.details.code_paths[0].line // "?")"' noir-results.json 2>/dev/null | tee -a noir-scan.txt || echo "  Unable to parse endpoint details" | tee -a noir-scan.txt
             echo "" | tee -a noir-scan.txt
 
-            # Technologies detected
-            echo "=== Technologies Detected ===" | tee -a noir-scan.txt
-            echo "   Analyzing source code for technology stack..." | tee -a noir-scan.txt
+            # Extract HTTP methods breakdown
+            echo "=== HTTP Methods Distribution ===" | tee -a noir-scan.txt
+            jq -r '.endpoints | group_by(.method) | .[] | "  • \(.[0].method): \(length) endpoints"' noir-results.json 2>/dev/null | tee -a noir-scan.txt || echo "  Unable to parse methods" | tee -a noir-scan.txt
+            echo "" | tee -a noir-scan.txt
+
+            # Extract vulnerability tags if any
+            echo "=== Potential Vulnerability Indicators ===" | tee -a noir-scan.txt
+            VULN_COUNT=$(jq '[.endpoints[].params[]?.tags[]? | select(.tagger == "Hunt")] | length' noir-results.json 2>/dev/null || echo "0")
+            if [ "$VULN_COUNT" -gt 0 ]; then
+              echo "   ⚠️  Found $VULN_COUNT parameters with vulnerability tags:" | tee -a noir-scan.txt
+              jq -r '[.endpoints[] | select(.params[]?.tags[]?.tagger == "Hunt") | "  • [\(.method)] \(.url) - Param: \(.params[] | select(.tags[]?.tagger == "Hunt") | .name) (\(.params[] | select(.tags[]?.tagger == "Hunt") | .tags[].name))"] | .[]' noir-results.json 2>/dev/null | head -10 | tee -a noir-scan.txt || echo "  Unable to extract vulnerability tags" | tee -a noir-scan.txt
+            else
+              echo "   No specific vulnerability tags detected by Noir" | tee -a noir-scan.txt
+            fi
+            echo "" | tee -a noir-scan.txt
+
+            # Extract unique file paths analyzed
+            echo "=== Source Files Analyzed ===" | tee -a noir-scan.txt
+            FILE_COUNT=$(jq '[.endpoints[].details.code_paths[].path] | unique | length' noir-results.json 2>/dev/null || echo "0")
+            echo "   Total Source Files: $FILE_COUNT" | tee -a noir-scan.txt
+            echo "   Sample Files:" | tee -a noir-scan.txt
+            jq -r '[.endpoints[].details.code_paths[].path] | unique | .[:10] | .[] | "     - \(.)"' noir-results.json 2>/dev/null | tee -a noir-scan.txt || echo "     Unable to list files" | tee -a noir-scan.txt
             echo "" | tee -a noir-scan.txt
           else
-            echo "⚠️  Noir results not generated" | tee -a noir-scan.txt
+            echo "⚠️  Noir results not generated or empty" | tee -a noir-scan.txt
+            echo "Check if Noir supports the project's language/framework" | tee -a noir-scan.txt
+            echo "" | tee -a noir-scan.txt
           fi
 
-          echo "📝 Attack Surface Analysis:" | tee -a noir-scan.txt
+          echo "📝 Attack Surface Analysis Summary:" | tee -a noir-scan.txt
           echo "   • API endpoint discovery via static analysis" | tee -a noir-scan.txt
           echo "   • Parameter extraction and mapping" | tee -a noir-scan.txt
           echo "   • Framework and technology detection" | tee -a noir-scan.txt
           echo "   • Source code location tracking" | tee -a noir-scan.txt
+          echo "   • Vulnerability pattern identification" | tee -a noir-scan.txt
           echo "" | tee -a noir-scan.txt
           echo "⚠️  Note: Juice Shop has many intentional vulnerabilities" | tee -a noir-scan.txt
           echo "📚 Reference: https://github.com/owasp-noir/noir" | tee -a noir-scan.txt
@@ -1144,7 +1331,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: k8s-security-noir-json
+          name: noir-attack-surface-json
           path: noir-results.json
           retention-days: 30
 
@@ -1152,104 +1339,15 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: k8s-security-noir-scan
+          name: noir-attack-surface-report
           path: noir-scan.txt
           retention-days: 30
-
-  # Stage 9: Security Report Consolidation
-  consolidate-reports:
-    name: Consolidate Security Reports
-    runs-on: ubuntu-latest
-    needs: [k8s-manifest-scan, security-headers-scan, owasp-zap-scan, noir-attack-surface-scan]
-    if: always()  # Run even if previous stages have failures
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Create reports directory
-        run: mkdir -p security-reports
-
-      - name: Download SAST Report
-        uses: actions/download-artifact@v4
-        continue-on-error: true
-        with:
-          name: sast-report
-          path: security-reports/
-
-      - name: Download Secret Detection Report
-        uses: actions/download-artifact@v4
-        continue-on-error: true
-        with:
-          name: secret-detection-report
-          path: security-reports/
-
-      - name: Download Security Scan Reports
-        uses: actions/download-artifact@v4
-        continue-on-error: true
-        with:
-          pattern: security-scan-*
-          path: security-reports/
-          merge-multiple: true
-
-      - name: Download Container Scan Report
-        uses: actions/download-artifact@v4
-        continue-on-error: true
-        with:
-          name: container-scan-trivy
-          path: security-reports/
-
-      - name: Download K8s Security Reports
-        uses: actions/download-artifact@v4
-        continue-on-error: true
-        with:
-          pattern: k8s-security-*
-          path: security-reports/
-          merge-multiple: true
-
-      - name: List downloaded reports
-        run: |
-          echo "📋 Downloaded security reports:"
-          ls -lah security-reports/
-          echo ""
-          echo "Report files:"
-          find security-reports/ -type f
-
-      - name: Run consolidation script
-        run: |
-          chmod +x .github/scripts/consolidate-security-reports.sh
-          .github/scripts/consolidate-security-reports.sh security-reports consolidated-reports
-
-      - name: Display consolidation summary
-        run: |
-          echo ""
-          echo "================================================================"
-          echo "📊 Security Report Consolidation Summary"
-          echo "================================================================"
-          echo ""
-          if [ -f "consolidated-reports/summary.txt" ]; then
-            echo "Tool Summary:"
-            cat consolidated-reports/summary.txt
-          fi
-          echo ""
-          echo "Generated Reports:"
-          ls -lh consolidated-reports/
-          echo ""
-
-      - name: Upload Consolidated Reports
-        uses: actions/upload-artifact@v4
-        with:
-          name: consolidated-security-reports
-          path: |
-            consolidated-reports/security-dashboard.html
-            consolidated-reports/security-report.md
-            consolidated-reports/summary.txt
-          retention-days: 90  # Keep consolidated reports longer
 
   # Final success message
   pipeline-complete:
     name: Pipeline Complete
     runs-on: ubuntu-latest
-    needs: consolidate-reports
+    needs: noir-attack-surface-analysis
     steps:
       - name: Success message
         run: |
@@ -1269,16 +1367,16 @@ jobs:
           echo "           • K8s Manifest Security ✓"
           echo "           • Security Headers Analysis ✓"
           echo "           • OWASP ZAP Baseline Scan ✓"
-          echo "           • OWASP Noir Attack Surface Detection ✓"
-          echo "   Stage 9: Security Report Consolidation ✓"
+          echo "   Stage 9: OWASP Noir - Attack Surface Detection ✓"
           echo ""
           echo "⚡ Parallel execution: SAST, Secrets, Tests, and Policy checks run simultaneously"
           echo "🔒 Security scanning integrated at multiple stages"
           echo "📦 Application deployed to Kubernetes"
           echo "🌐 Access at: http://localhost:30080"
           echo ""
-          echo "📊 Consolidated Security Reports Available:"
-          echo "   Download the 'consolidated-security-reports' artifact to view:"
-          echo "   • security-dashboard.html - Interactive HTML dashboard"
-          echo "   • security-report.md - Markdown summary report"
-          echo "   • summary.txt - Quick statistics"
+          echo "📊 Security Reports Available as Artifacts:"
+          echo "   • noir-attack-surface-json - Complete Noir JSON results"
+          echo "   • noir-attack-surface-report - Formatted attack surface analysis"
+          echo "   • k8s-security-* - K8s manifest, headers, and ZAP reports"
+          echo "   • container-scan-trivy - Container vulnerability scan"
+          echo "   • sast-report - Static analysis results"
