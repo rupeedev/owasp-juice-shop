@@ -116,30 +116,70 @@ jobs:
         run: |
           echo "🔐 Running TruffleHog secret scan..."
           echo "Scanning entire git history for leaked credentials..."
-          
-          # Run TruffleHog with Docker
+
+          # Pull Docker image first (to separate pull logs from results)
+          docker pull trufflesecurity/trufflehog:latest > /dev/null 2>&1
+
+          # Run TruffleHog with Docker (JSON output to file)
           docker run --rm -v $(pwd):/repo \
             trufflesecurity/trufflehog:latest \
             git file:///repo --only-verified --json > trufflehog-report.json 2>&1 || echo "⚠️  Secrets found (warning mode)"
-          
-          # Display summary
+
+          # Display summary (parse NDJSON properly)
           if [ -s trufflehog-report.json ]; then
             echo ""
             echo "📊 TruffleHog Scan Results:"
-            cat trufflehog-report.json | jq -r '.DetectorName' | sort | uniq -c 2>/dev/null || cat trufflehog-report.json | head -20
-            echo ""
-            echo "⚠️  Found secrets - review trufflehog-report.json for details"
+
+            # Extract summary from last line (finished scanning message)
+            SUMMARY=$(grep -o '"verified_secrets":[0-9]*' trufflehog-report.json | tail -1 | cut -d: -f2)
+            UNVERIFIED=$(grep -o '"unverified_secrets":[0-9]*' trufflehog-report.json | tail -1 | cut -d: -f2)
+
+            if [ -n "$SUMMARY" ]; then
+              echo "   Verified secrets: ${SUMMARY:-0}"
+              echo "   Unverified secrets: ${UNVERIFIED:-0}"
+
+              if [ "${SUMMARY:-0}" -eq 0 ] && [ "${UNVERIFIED:-0}" -eq 0 ]; then
+                echo "   ✅ No secrets detected"
+              else
+                echo "   ⚠️  Secrets found - review report for details"
+              fi
+            else
+              echo "   Scan completed - check report for details"
+            fi
           else
-            echo "✅ No verified secrets detected"
+            echo "✅ No output - scan may have found nothing"
           fi
         continue-on-error: true  # Warning mode for training
+
+      - name: Generate Human-Readable TruffleHog Report
+        if: always()
+        run: |
+          echo "📊 Converting TruffleHog results to human-readable format..."
+
+          if [ -f trufflehog-report.json ]; then
+            python3 .github/scripts/parse-trufflehog.py trufflehog-report.json trufflehog-readable-report.txt
+
+            echo ""
+            echo "✅ Readable report generated!"
+            echo ""
+            echo "Preview of report:"
+            echo "=================="
+            head -60 trufflehog-readable-report.txt
+            echo "=================="
+            echo "(Full report available in artifact download)"
+          else
+            echo "⚠️  No TruffleHog report found to parse"
+          fi
+        continue-on-error: true
 
       - name: Upload TruffleHog Report
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: secret-detection-report
-          path: trufflehog-report.json
+          path: |
+            trufflehog-report.json
+            trufflehog-readable-report.txt
           retention-days: 30
 
   # Stage 2c: Unit Tests (Parallel)
