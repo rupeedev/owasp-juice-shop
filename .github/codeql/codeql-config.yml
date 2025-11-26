@@ -1,0 +1,72 @@
+# CodeQL Configuration for OWASP Juice Shop
+# Excludes directories that cause parse errors or are not relevant for security analysis
+
+name: "CodeQL Config for Juice Shop"
+
+paths-ignore:
+  # Dependencies
+  - node_modules/**
+  - '**/node_modules/**'
+
+  # Build artifacts
+  - build/**
+  - dist/**
+  - cache/**
+  - .nyc_output/**
+  - .sass-cache/**
+  - app/**  # Build output
+  - '!frontend/src/app'  # But include frontend source
+
+  # Test files and fixtures
+  - test/**
+  - '**/*.spec.ts'
+  - '**/*.spec.js'
+  - '**/test/**'
+  - cypress/**
+
+  # Data files (may contain intentionally malformed content)
+  - data/**
+  - ftp/**
+  - uploads/**
+  - i18n/**
+
+  # Generated and temporary files
+  - '**/*.map'
+  - '**/*.orig'
+  - '**/*.out'
+  - '**/*.log'
+  - logs/**
+
+  # Frontend build artifacts
+  - frontend/dist/**
+  - frontend/build/**
+  - frontend/src/**/*.js  # Generated from TypeScript
+
+  # Vagrant and Docker
+  - vagrant/**
+  - .vagrant/**
+
+  # Monitoring and screenshots
+  - monitoring/**
+  - screenshots/**
+
+  # Third-party and vendor code
+  - lib/insecurity.ts  # Intentionally insecure library
+
+  # Configuration files
+  - '**/*.config.js'
+  - '**/*.config.ts'
+  - Gruntfile.js
+  - webpack.*.js
+
+# Only analyze source code that matters
+paths:
+  - routes/**
+  - models/**
+  - frontend/src/**
+  - server.ts
+  - app.ts
+
+# Use comprehensive security queries
+queries:
+  - uses: security-extended
