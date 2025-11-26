@@ -246,7 +246,7 @@ jobs:
 
   # Stage 3b: RetireJS
   retirejs:
-    name: RetireJS
+    name: RetireJS - Vulnerable JavaScript Libraries
     runs-on: ubuntu-latest
     needs: [sast, secret-detection, test]
     steps:
@@ -258,20 +258,229 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Run RetireJS
+      - name: Install project dependencies
         run: |
-          echo "📚 Running RetireJS scan..."
+          echo "📦 Installing project dependencies (required for RetireJS scanning)..."
+          npm install --prefer-offline --no-audit
+          echo "✅ Dependencies installed"
+
+      - name: Install RetireJS globally
+        run: |
+          echo "📚 Installing RetireJS scanner..."
           npm install -g retire
-          retire --path . > retirejs-scan.txt 2>&1 || echo "⚠️  Vulnerable libraries found (warning mode)"
-          cat retirejs-scan.txt
+          retire --version
+          echo "✅ RetireJS installed"
+
+      - name: Run RetireJS Scan (Multiple Formats)
+        run: |
+          echo "🔍 Running RetireJS vulnerability scan..."
+          echo "Scanning JavaScript libraries and Node.js modules for known vulnerabilities"
+          echo ""
+
+          # Create reports directory
+          mkdir -p retirejs-reports
+
+          # Run RetireJS with JSON output (for machine processing)
+          echo "=== Generating JSON Report ===" | tee retirejs-reports/scan-output.txt
+          retire --path . --outputformat json --exitwith 0 > retirejs-reports/retirejs-report.json 2>&1 || true
+
+          # Run RetireJS with CycloneDX SBOM format (industry standard)
+          echo "" | tee -a retirejs-reports/scan-output.txt
+          echo "=== Generating CycloneDX SBOM Report ===" | tee -a retirejs-reports/scan-output.txt
+          retire --path . --outputformat cyclonedx --exitwith 0 > retirejs-reports/retirejs-sbom.json 2>&1 || true
+
+          # Run RetireJS with verbose text output (for human reading)
+          echo "" | tee -a retirejs-reports/scan-output.txt
+          echo "=== Detailed Vulnerability Scan ===" | tee -a retirejs-reports/scan-output.txt
+          retire --path . --verbose --exitwith 0 2>&1 | tee -a retirejs-reports/scan-output.txt || true
+
+          echo ""
+          echo "✅ RetireJS scan completed"
+          echo "📊 Generated reports:"
+          echo "   • retirejs-report.json (JSON format)"
+          echo "   • retirejs-sbom.json (CycloneDX SBOM)"
+          echo "   • scan-output.txt (Verbose text)"
         continue-on-error: true
 
-      - name: Upload RetireJS Report
+      - name: Generate Human-Readable Report
+        if: always()
+        run: |
+          echo "📊 Analyzing RetireJS results..."
+
+          # Check if JSON report exists and has content
+          if [ -f "retirejs-reports/retirejs-report.json" ]; then
+            # Create Python script for parsing
+            cat > parse_retire.py << 'PYEOF'
+          import json
+          import sys
+          import os
+
+          # Read RetireJS JSON report
+          try:
+              with open('retirejs-reports/retirejs-report.json', 'r') as f:
+                  content = f.read().strip()
+
+              if not content or content == '[]':
+                  print("No vulnerabilities detected by RetireJS")
+                  with open('retirejs-reports/retirejs-readable-report.txt', 'w') as out:
+                      out.write("=" * 80 + "\n")
+                      out.write("RETIREJS VULNERABILITY SCAN REPORT\n")
+                      out.write("=" * 80 + "\n\n")
+                      out.write("Scan Status: COMPLETED\n")
+                      out.write("Vulnerabilities Found: 0\n\n")
+                      out.write("No vulnerable JavaScript libraries detected\n\n")
+                      out.write("Note: This scan checks for known vulnerabilities in:\n")
+                      out.write("  - JavaScript libraries (client-side)\n")
+                      out.write("  - Node.js modules (server-side)\n")
+                      out.write("  - Bower components\n")
+                      out.write("  - Third-party dependencies\n\n")
+                      out.write("=" * 80 + "\n")
+                  sys.exit(0)
+
+              # Parse JSON data
+              data = json.loads(content)
+
+              # Generate readable report
+              with open('retirejs-reports/retirejs-readable-report.txt', 'w') as out:
+                  out.write("=" * 80 + "\n")
+                  out.write("RETIREJS VULNERABILITY SCAN REPORT\n")
+                  out.write("=" * 80 + "\n\n")
+
+                  # Count vulnerabilities
+                  total_vulns = 0
+                  high_severity = 0
+                  medium_severity = 0
+                  low_severity = 0
+
+                  if isinstance(data, list):
+                      for finding in data:
+                          results = finding.get('results', [])
+                          for result in results:
+                              vulns = result.get('vulnerabilities', [])
+                              total_vulns += len(vulns)
+                              for vuln in vulns:
+                                  severity = vuln.get('severity', 'unknown').lower()
+                                  if 'high' in severity or 'critical' in severity:
+                                      high_severity += 1
+                                  elif 'medium' in severity:
+                                      medium_severity += 1
+                                  else:
+                                      low_severity += 1
+
+                  out.write(f"Total Vulnerabilities: {total_vulns}\n")
+                  out.write(f"  - High/Critical: {high_severity}\n")
+                  out.write(f"  - Medium: {medium_severity}\n")
+                  out.write(f"  - Low/Info: {low_severity}\n\n")
+                  out.write("=" * 80 + "\n\n")
+
+                  # Detailed findings
+                  if isinstance(data, list) and data:
+                      out.write("DETAILED FINDINGS:\n\n")
+
+                      for idx, finding in enumerate(data, 1):
+                          file_path = finding.get('file', 'Unknown')
+                          results = finding.get('results', [])
+
+                          out.write(f"[{idx}] File: {file_path}\n")
+                          out.write("-" * 80 + "\n")
+
+                          for result in results:
+                              component = result.get('component', 'Unknown')
+                              version = result.get('version', 'Unknown')
+                              detection = result.get('detection', 'Unknown')
+
+                              out.write(f"  Component: {component}\n")
+                              out.write(f"  Version: {version}\n")
+                              out.write(f"  Detection Method: {detection}\n")
+
+                              vulns = result.get('vulnerabilities', [])
+                              if vulns:
+                                  out.write(f"  Vulnerabilities ({len(vulns)}):\n\n")
+
+                                  for vuln_idx, vuln in enumerate(vulns, 1):
+                                      severity = vuln.get('severity', 'Unknown')
+                                      identifiers = vuln.get('identifiers', {})
+                                      cve_list = identifiers.get('CVE', [])
+                                      cve = cve_list[0] if cve_list else 'N/A'
+                                      info_urls = vuln.get('info', [])
+
+                                      out.write(f"    [{vuln_idx}] Severity: {severity}\n")
+                                      out.write(f"        CVE: {cve}\n")
+                                      if info_urls:
+                                          out.write(f"        Info: {info_urls[0]}\n")
+                                      out.write("\n")
+
+                              out.write("\n")
+
+                  out.write("=" * 80 + "\n")
+                  out.write("SCAN COMPLETED\n")
+                  out.write("=" * 80 + "\n")
+
+              print("Human-readable report generated successfully")
+
+          except json.JSONDecodeError as e:
+              print(f"JSON parsing error: {e}")
+              print("Generating minimal report...")
+              with open('retirejs-reports/retirejs-readable-report.txt', 'w') as out:
+                  out.write("RetireJS scan completed but JSON parsing failed\n")
+                  out.write("Check retirejs-report.json and scan-output.txt for raw results\n")
+          except Exception as e:
+              print(f"Error generating report: {e}")
+              with open('retirejs-reports/retirejs-readable-report.txt', 'w') as out:
+                  out.write(f"Error generating readable report: {str(e)}\n")
+          PYEOF
+
+            # Run the Python script
+            python3 parse_retire.py
+            rm -f parse_retire.py
+          else
+            echo "⚠️  RetireJS JSON report not found"
+            echo "Creating placeholder report..."
+            cat > retirejs-reports/retirejs-readable-report.txt << 'EOFR'
+          RetireJS scan completed but no JSON output was generated.
+          Check scan-output.txt for raw scan results.
+          EOFR
+          fi
+
+          # Display preview
+          echo ""
+          echo "Preview of readable report:"
+          echo "=============================="
+          head -50 retirejs-reports/retirejs-readable-report.txt
+          echo "=============================="
+          echo "(Full report available in artifact download)"
+        continue-on-error: true
+
+      - name: Display Scan Summary
+        if: always()
+        run: |
+          echo ""
+          echo "📊 RetireJS Scan Summary"
+          echo "========================"
+
+          # Count findings from scan output
+          if [ -f "retirejs-reports/scan-output.txt" ]; then
+            VULNERABLE_LIBS=$(grep -c "has known vulnerabilities" retirejs-reports/scan-output.txt || echo "0")
+            echo "Vulnerable libraries detected: $VULNERABLE_LIBS"
+          fi
+
+          echo ""
+          echo "📄 Generated Reports:"
+          ls -lh retirejs-reports/
+          echo ""
+          echo "⚠️  Note: Juice Shop intentionally uses vulnerable libraries for training"
+          echo "📚 Reference: https://github.com/RetireJS/retire.js"
+
+      - name: Upload RetireJS Reports
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: security-scan-retirejs
-          path: retirejs-scan.txt
+          path: |
+            retirejs-reports/retirejs-report.json
+            retirejs-reports/retirejs-sbom.json
+            retirejs-reports/retirejs-readable-report.txt
+            retirejs-reports/scan-output.txt
           retention-days: 30
 
   # Stage 3c: Gitleaks

@@ -13,20 +13,19 @@ OWASP Juice Shop is an intentionally insecure web application designed for secur
 ALWAYS refer below documents while working on this application
 
 1. /docs/AWS_DEPLOYMENT_PLAN.txt
-   /docs/AWS_DEPLOYMENT_PLAN_ECS.txt
-   /docs/ChangeLog.txt
-   /docs/DEVSECOPS_TRAINING_WITH_JUICE_SHOP.txt
-   /docs/Deploy-App-2-K8s-Cluster.txt
-   /docs/FRONTEND_BACKEND_DATABASE_FLOW.txt
-   /docs/GIT_WORKFLOW_SLASH_COMMAND_MANUAL.txt
-   /docs/LOCALSTACK_DEPLOYMENT_GUIDE.txt
-   /docs/devsecops-practice-summary.txt
-   /docs/juice-shop-app.txt
-   /docs/security-scan/security-scan-tools.txt
+2. /docs/AWS_DEPLOYMENT_PLAN_ECS.txt
+3. /docs/DEVSECOPS_TRAINING_WITH_JUICE_SHOP.txt
+4. /docs/Deploy-App-2-K8s-Cluster.txt
+5. /docs/FRONTEND_BACKEND_DATABASE_FLOW.txt
+6. /docs/GIT_WORKFLOW_SLASH_COMMAND_MANUAL.txt
+7. /docs/LOCALSTACK_DEPLOYMENT_GUIDE.txt
+8. /docs/devsecops-practice-summary.txt
+9. /docs/juice-shop-app.txt
+10. /docs/security-scan/security-scan-tools.txt
 
 ## Git Commit Guidelines
 
-- Rule: I MUST NOT include the Claude Code signature and co-author attribution in commit messages for this repository.
+- DO NOT include the Claude Code signature and co-author attribution in commit messages for this repository.
 
 ## Documentation Guidelines
 
@@ -38,6 +37,34 @@ ALWAYS refer below documents while working on this application
   ✓ LIMITED to 200 lines (max 500-600 based on use-case)
   ✓ MINIMAL decoration, use under the heading "=====" - No heavy borders, just clean headings
 - Don't create README.md file until asked by the user
+
+### Start Every Session With:
+
+```
+
+Before we start, read /docs/CURRENT_STATE.txt and summarize what you understand about our current progress.
+```
+
+"Before we start, read /docs/CURRENT_STATE.txt and /docs/SESSION_HANDOFF.txt to understand where we left off"
+
+Required reading at session start:
+
+1. /docs/CURRENT_STATE.txt - Get full context
+2. /docs/SESSION_HANDOFF.txt - Understand last session
+3. /docs/ChangeLog.txt
+
+### End Every Session With:
+
+```
+Run /update-session-handoff to capture today's work
+```
+
+This command will:
+
+- Interactively capture what was accomplished
+- Update all context files (CURRENT_STATE, SESSION_HANDOFF, COMMANDS_LOG, DECISIONS, ISSUES)
+- Prepare handoff for next session
+- Maintain project memory
 
 ## Create Session Reports Guidelines
 
