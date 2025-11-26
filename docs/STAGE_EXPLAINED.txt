@@ -5,14 +5,15 @@ PIPELINE EXPLAINED
 
 Key Insight:
 
-  • npm audit     → Finds vulnerable dependencies (supply chain)
-  • CodeQL        → Finds vulnerable code (application logic)
-  • TruffleHog    → Finds leaked secrets (credentials)
-  • RetireJS      → Finds vulnerable JavaScript libraries (client + server)
-  • Gitleaks      → Finds secrets in git history (commit scanning)
-  • Trivy         → Finds container vulnerabilities (base images + OS packages)
-  • OPA/Conftest  → Finds Dockerfile policy violations (configuration security)
-  • K8s Manifest  → Finds Kubernetes security misconfigurations (deployment security)
+  • npm audit       → Finds vulnerable dependencies (supply chain)
+  • CodeQL          → Finds vulnerable code (application logic)
+  • TruffleHog      → Finds leaked secrets (credentials)
+  • RetireJS        → Finds vulnerable JavaScript libraries (client + server)
+  • Gitleaks        → Finds secrets in git history (commit scanning)
+  • Trivy           → Finds container vulnerabilities (base images + OS packages)
+  • OPA/Conftest    → Finds Dockerfile policy violations (configuration security)
+  • K8s Manifest    → Finds Kubernetes security misconfigurations (deployment security)
+  • Security Headers→ Finds missing HTTP security headers (runtime protection)
 
 TL;DR
 -----
@@ -1288,5 +1289,173 @@ Both run in the pipeline for defense-in-depth:
   Stage 8a: K8s Manifest (validate K8s deployment configs)
 
 ================================================================================
+
+
+================================================================================
+
+================================================================================
+
+STAGE 8b: Security Headers Analysis - HTTP Response Header Validation
+======================================================================
+
+TL;DR
+-----
+Security Headers = HTTP response headers that enable browser-side protections
+against common attacks (XSS, clickjacking, MIME sniffing). Think of them as
+seat belts for web browsers.
+
+
+Command Execution:
+------------------
+curl -s -D - http://localhost:30080 -o /dev/null 2>&1 | grep -E "^X-|^Content-Security|^Strict-Transport"
+
+HEADERS=$(curl -s -D - http://localhost:30080 -o /dev/null 2>&1)
+echo "$HEADERS" | grep -q "X-Content-Type-Options"
+echo "$HEADERS" | grep -q "X-Frame-Options"
+echo "$HEADERS" | grep -q "Content-Security-Policy"
+echo "$HEADERS" | grep -q "Strict-Transport-Security"
+echo "$HEADERS" | grep -q "X-XSS-Protection"
+
+Meaning:
+  • curl -D -           → Dump HTTP headers to stdout
+  • -s                  → Silent mode (no progress bar)
+  • -o /dev/null        → Discard response body
+  • grep -E "^X-|^CSP"  → Filter security-related headers
+  • grep -q             → Quiet mode (exit code 0 if found)
+  • Output              → security-headers-scan.txt
+
+
+
+
+PURPOSE IN CI/CD PIPELINE
+============================
+
+Why Security Headers in Stage 8b?
+----------------------------------
+✓ Runtime validation      → Tests deployed app, not just config
+✓ Defense-in-depth        → Browser protections complement server-side security
+✓ OWASP best practice     → Missing headers = A05:Security Misconfiguration
+✓ Quick scan              → Takes < 5 seconds (parallel with ZAP/Noir)
+
+Pipeline Position:
+------------------
+Stage 8b: Security Headers (Parallel with K8s Manifest, ZAP, Noir)
+             ↓
+         Runs after Stage 7 (Deploy to K8s)
+         Requires app running at localhost:30080
+
+
+INTERPRETATION OF OUTPUT
+==========================
+
+Result: SUCCESS (with warnings - intentionally vulnerable app)
+--------------------------------------------------------------
+Juice Shop has SOME security headers but intentionally omits critical ones
+for training purposes.
+
+Typical Juice Shop Findings:
+
+=== Current Security Headers ===
+X-Content-Type-Options: nosniff
+X-Frame-Options: SAMEORIGIN
+X-Recruiting: /#/jobs
+
+=== Security Header Assessment ===
+✓ X-Content-Type-Options: Present
+  Protection: Prevents MIME-sniffing attacks
+
+✓ X-Frame-Options: Present
+  Protection: Prevents clickjacking via iframe embedding
+
+✗ Content-Security-Policy: Missing (expected)
+  Risk: No protection against XSS, inline script execution
+
+✗ Strict-Transport-Security: Missing (expected)
+  Risk: No HTTPS enforcement, vulnerable to downgrade attacks
+
+✗ X-XSS-Protection: Missing (expected)
+  Risk: Browser XSS filter disabled (deprecated but still checked)
+
+What this means:
+• Juice Shop has BASIC protections (MIME-sniffing, clickjacking)
+• CRITICAL protections missing (CSP, HSTS) for training purposes
+• Pipeline continues (continue-on-error: true) to allow full scan results
+
+
+COMMON SECURITY HEADERS SCAN ERRORS
+====================================
+
+If the scan HAD failed, you might see:
+
+Application Not Accessible:
+  ✗ error  ❌ Application not accessible (HTTP 000)
+  ✗ error  Connection failed - application not ready yet
+
+What these mean:
+  • HTTP 000: curl couldn't connect (app not running or port wrong)
+  • Creates diagnostic report with pod status for troubleshooting
+  • Exits 0 to allow artifact upload (continue-on-error behavior)
+
+Missing Prerequisites:
+  ✗ error  kubectl: command not found
+  ✗ error  Pod not ready within timeout
+
+What these mean:
+  • kubectl not installed: Install step failed
+  • Pod timeout: Deployment step failed or pod crashlooping
+
+
+SECURITY HEADERS REFERENCE
+===========================
+
+Critical Headers (Missing in Juice Shop):
+  • Content-Security-Policy  → Prevents XSS, controls resource loading
+  • Strict-Transport-Security→ Enforces HTTPS (prevents downgrade)
+  • X-XSS-Protection         → Browser XSS filter (deprecated but checked)
+
+Present Headers (Partial Protection):
+  • X-Content-Type-Options   → Prevents MIME-sniffing
+  • X-Frame-Options          → Prevents clickjacking
+
+Nice-to-Have Headers:
+  • Referrer-Policy          → Controls referrer information leakage
+  • Permissions-Policy       → Controls browser features (camera, mic, etc.)
+
+Comparison with Production Apps:
+
+  | Header                      | Juice Shop | Production App |
+  |-----------------------------|------------|----------------|
+  | X-Content-Type-Options      | ✓          | ✓              |
+  | X-Frame-Options             | ✓          | ✓              |
+  | Content-Security-Policy     | ✗          | ✓ (REQUIRED)   |
+  | Strict-Transport-Security   | ✗          | ✓ (REQUIRED)   |
+  | X-XSS-Protection            | ✗          | ✓ (optional)   |
+
+Why Juice Shop is different:
+  • Intentionally vulnerable for training
+  • Missing CSP allows XSS challenges
+  • Missing HSTS allows HTTP testing
+  • continue-on-error: true in pipeline
+
+
+ARTIFACT DETAILS
+================
+
+Uploaded Artifact:
+  • Name: k8s-security-security-headers
+  • Path: security-headers-scan.txt
+  • Retention: 30 days
+  • Contains: Header presence check + diagnostic info
+
+Runner Requirements:
+  • Type: self-hosted (needs access to localhost:30080)
+  • Needs: kubectl, curl
+  • Network: Must reach deployed K8s service
+
+================================================================================
+
+Key Insight: Security headers are the LAST line of defense (browser-side) after
+all other security scans. Missing CSP/HSTS is intentional in Juice Shop but
+would be CRITICAL in production apps (OWASP A05: Security Misconfiguration).
 
 
