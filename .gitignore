@@ -76,13 +76,9 @@ credentials.json
 # Local setup files (may contain sensitive info)
 docs/LocalStack/
 
-/Users/rupeshpanwar/Documents/AI-Projects/owasp-juice-shop/docs/DEVSECOPS_TRAINING_AGENDA.txt
-
-DEVSECOPS_TRAINING_AGENDA.txt
-docs/DEVSECOPS_TRAINING_WITH_JUICE_SHOP.txt
-
 /Users/rupeshpanwar/Documents/AI-Projects/owasp-juice-shop/docs/docker/pat.txt
 
 # GitHub PAT and secrets
 .env
 kind-k8s-cluster/.env
+security-scan-reports/

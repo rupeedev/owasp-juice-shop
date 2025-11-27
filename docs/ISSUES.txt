@@ -1,0 +1,94 @@
+ISSUES TRACKING
+===============
+Active and resolved issues for OWASP Juice Shop project.
+
+Last Updated: 2025-11-26
+
+---
+
+=== ACTIVE ISSUES ===
+
+(No active issues currently tracked)
+
+---
+
+=== RESOLVED ISSUES ===
+
+(No resolved issues yet)
+
+---
+
+ISSUE TEMPLATE:
+===============
+
+Issue #[NUMBER]: [Short descriptive title]
+Severity: [Critical/High/Medium/Low]
+Impact: [What functionality is affected]
+Environment: [Where it occurs - local/dev/prod/k8s/aws/etc.]
+First seen: [YYYY-MM-DD]
+
+Description:
+[Detailed description of the problem]
+
+Reproduction steps:
+1. [Step 1]
+2. [Step 2]
+3. [Observe error/problem]
+
+Error message/logs:
+```
+[Paste relevant error messages or logs]
+```
+
+Workaround:
+[If any temporary workaround exists, otherwise "NONE"]
+
+Root cause:
+[If identified, otherwise "Under investigation"]
+
+Permanent fix needed:
+[What needs to be done to fully resolve this]
+
+Status: [Open/In Progress/Blocked/Needs Info]
+Assigned to: [Name or "Unassigned"]
+Related issues: [Link to related issues if any]
+Related decisions: [Link to DECISIONS.txt entry if applicable]
+
+---
+
+RESOLVED ISSUE TEMPLATE:
+========================
+
+Issue #[NUMBER]: [Title]
+Resolution: [How it was fixed]
+Date resolved: [YYYY-MM-DD]
+Fixed in: [Commit hash or version]
+
+Original issue:
+[Brief description]
+
+Solution:
+[What was done to fix it]
+
+Lessons learned:
+[What we learned from this issue]
+
+Prevention:
+[How to prevent similar issues in future]
+
+---
+
+ISSUE NUMBERING:
+================
+Use sequential numbers: #1, #2, #3, etc.
+When resolving, move the entire issue block to "RESOLVED ISSUES" section.
+Keep resolved issues for reference and learning.
+
+SEVERITY GUIDELINES:
+====================
+- Critical: System down, data loss, security breach
+- High: Major functionality broken, significant performance degradation
+- Medium: Feature not working as expected, workaround available
+- Low: Minor bug, cosmetic issue, enhancement request
+
+---

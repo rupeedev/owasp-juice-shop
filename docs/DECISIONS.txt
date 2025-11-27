@@ -1,0 +1,228 @@
+TECHNICAL DECISIONS LOG
+=======================
+Records important technical decisions, rationale, and trade-offs
+for the OWASP Juice Shop DevSecOps project.
+
+Last Updated: 2025-11-26T20:30:00+08:00
+
+---
+
+Decision: Use ubuntu-latest Runner for K8s Manifest Security Scanning
+Date: 2025-11-26
+Category: Infrastructure/Security
+
+Context & Requirements:
+- K8s manifest scanning job was failing with "Cannot connect to Docker daemon"
+- OPA/Conftest requires Docker to run in containerized mode
+- Self-hosted runners may not have Docker daemon accessible
+- Need reliable, consistent Docker access for policy validation
+
+Chosen Solution:
+- Changed k8s-manifest-scan job runner from 'self-hosted' to 'ubuntu-latest'
+- GitHub-hosted ubuntu-latest runners have Docker pre-installed and running
+- K8s manifest scanning doesn't require access to deployed application
+- Can run in parallel with other DAST scans that need app access
+
+Alternatives Considered:
+- Install/configure Docker on self-hosted runner (complexity, maintenance overhead)
+- Use native Conftest binary instead of Docker (installation complexity, version management)
+- Keep on self-hosted and handle Docker connectivity (unreliable)
+
+Trade-offs Accepted:
++ Pros:
+  - Docker pre-installed and ready to use on GitHub-hosted runners
+  - No maintenance of Docker daemon on self-hosted infrastructure
+  - Reliable, consistent scanning environment
+  - Fast job startup (no Docker installation needed)
+  - Can run in parallel with self-hosted jobs
+- Cons:
+  - Uses GitHub Actions minutes (minimal impact for manifest scanning <1 min)
+  - Two different runner types in Stage 8 (ubuntu-latest for manifest, self-hosted for DAST)
+
+Impact:
+- Affected components: .github/workflows/enhanced-pipeline.yml (Line 770)
+- Dependencies: None (uses existing GitHub-hosted infrastructure)
+- Performance: K8s manifest scan now completes successfully in <2 minutes
+- Stage 8 architecture: Split into parallel jobs (8a: ubuntu-latest, 8b-8d: self-hosted)
+
+Review/Revisit:
+- If GitHub Actions minutes become a concern, revisit Docker setup on self-hosted
+- Monitor for any GitHub-hosted runner limitations or quota issues
+
+---
+
+Decision: Update OPA Rego Policies to v1 Syntax (OPA 0.50+)
+Date: 2025-11-26
+Category: Technology/Security
+
+Context & Requirements:
+- OPA Conftest was failing with "rego_parse_error: `if` keyword is required"
+- Existing policy files used old Rego syntax (pre-OPA 0.50)
+- OPA v0.50+ introduced breaking syntax changes requiring 'if' and 'contains' keywords
+- Need policies compatible with latest Conftest Docker images
+
+Chosen Solution:
+- Updated all policy files to OPA Rego v1 syntax:
+  → Added 'contains' keyword to all deny/warn rule declarations
+  → Added 'if' keyword before all rule bodies
+  → Changed '=' to ':=' for all assignments
+- Applied changes to:
+  → policy/dockerfile.rego (Dockerfile security policies)
+  → policy/kubernetes.rego (NEW K8s manifest policies)
+
+Alternatives Considered:
+- Pin to older Conftest version (maintains old syntax, but loses security updates)
+- Use Conftest binary with OPA compatibility flag (adds complexity)
+- Rewrite policies in different tool (Kyverno, Gatekeeper) (major rewrite effort)
+
+Trade-offs Accepted:
++ Pros:
+  - Compatible with latest OPA/Conftest versions
+  - Future-proof policy code
+  - Clearer syntax with explicit 'if' and 'contains' keywords
+  - Works with Conftest Docker image (openpolicyagent/conftest:latest)
+  - Can use modern OPA features
+- Cons:
+  - Not backward compatible with OPA < 0.50
+  - Required updating all existing rules
+  - Documentation needs to reflect new syntax
+
+Impact:
+- Affected components: policy/dockerfile.rego, policy/kubernetes.rego
+- Dependencies: Requires OPA 0.50+ / Conftest with OPA 0.50+ support
+- Breaking changes: Old syntax no longer works
+- Documentation: Updated security-scan-setup.md with syntax troubleshooting (Issue 9)
+
+Review/Revisit:
+- As needed when new OPA versions introduce syntax changes
+- Consider adding CI check to validate policy syntax before merge
+
+---
+
+Decision: Separate Policy Files for Dockerfiles and K8s Manifests
+Date: 2025-11-26
+Category: Architecture/Security
+
+Context & Requirements:
+- Dockerfile policies and K8s manifest policies have different validation needs
+- K8s YAML structure (kind, spec, metadata) differs from Dockerfile structure
+- Need clear separation of concerns for maintainability
+- Each resource type requires specific security checks
+
+Chosen Solution:
+- Created two separate policy files:
+  → policy/dockerfile.rego: Container build security (USER, COPY, base images)
+  → policy/kubernetes.rego: K8s deployment security (runAsNonRoot, securityContext)
+- Each file has package main (can coexist in same directory)
+- Conftest scans with --policy ./policy (loads all .rego files)
+
+Alternatives Considered:
+- Single policy file with conditional logic (complex, hard to maintain)
+- Subdirectories (policy/docker/, policy/k8s/) (more file structure overhead)
+- Different packages per file (requires package-specific scanning)
+
+Trade-offs Accepted:
++ Pros:
+  - Clear separation of concerns
+  - Easier to maintain and extend
+  - Each file focuses on one resource type
+  - Can test policies independently
+  - Team members can own specific policy files
+- Cons:
+  - Multiple files to manage (minimal overhead)
+  - Need to remember to scan correct policy for each resource type
+
+Impact:
+- Affected components: policy/ directory structure
+- Files created: policy/kubernetes.rego (new)
+- Files modified: policy/dockerfile.rego (syntax update)
+- Policy count:
+  → Dockerfile policies: 6 deny + 3 warn rules
+  → K8s policies: 11 security validation rules
+
+Review/Revisit:
+- As new resource types are added (Terraform, Helm charts, etc.)
+- Consider policy library structure if file count grows beyond 5-10
+
+---
+
+Decision: Initialize Context Preservation System
+Date: 2025-11-26
+Category: Process
+
+Context & Requirements:
+- Need systematic way to track session work across multiple development sessions
+- Required for maintaining project continuity when working with AI assistant
+- Improves handoff between sessions and team collaboration
+
+Chosen Solution:
+- Implemented 5-file context preservation system:
+  1. SESSION_HANDOFF.txt - Session-by-session work log
+  2. CURRENT_STATE.txt - Current project status and next steps
+  3. COMMANDS_LOG.txt - Reusable command reference library
+  4. DECISIONS.txt - This file - technical decision tracking
+  5. ISSUES.txt - Issue and bug tracking
+
+Alternatives Considered:
+- Using only git commit messages (insufficient detail)
+- Wiki or external documentation (less accessible, context switching)
+- Issue tracker only (doesn't capture full context)
+
+Trade-offs Accepted:
++ Pros:
+  - Complete session history in plain text
+  - Easy to grep/search
+  - Version controlled with code
+  - No external dependencies
+  - AI assistant can read/update automatically
+- Cons:
+  - Manual discipline required to update
+  - Potential for duplication with other docs
+  - Files can grow large over time
+
+Impact:
+- Affected components: All future development work
+- Dependencies added: None
+- Files created: 5 new tracking files in /docs
+
+Review/Revisit:
+- After 10 sessions, evaluate if system is being used effectively
+- Consider archiving old session entries if files become too large
+
+---
+
+(Future decisions will be added above this line)
+
+---
+
+DECISION TEMPLATE:
+==================
+
+Decision: [Clear statement of what was decided]
+Date: [YYYY-MM-DD]
+Category: [Architecture/Technology/Process/Security/Performance]
+
+Context & Requirements:
+[Why this decision was needed - what problem does it solve?]
+
+Chosen Solution:
+[What was decided - be specific]
+
+Alternatives Considered:
+[What other options were evaluated?]
+
+Trade-offs Accepted:
++ Pros:
+  - [Benefits]
+- Cons:
+  - [Drawbacks or limitations]
+
+Impact:
+- Affected components: [What parts of the system are impacted?]
+- Dependencies added: [New libraries, tools, or services]
+- Breaking changes: [If any]
+
+Review/Revisit:
+[When should this decision be re-evaluated?]
+
+---

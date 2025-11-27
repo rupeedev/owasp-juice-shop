@@ -1,0 +1,254 @@
+COMMANDS LOG
+=============
+Reusable command reference for OWASP Juice Shop project
+Commands are organized by category for easy reference.
+
+Last Updated: 2025-11-26T20:30:00+08:00
+
+---
+
+=== Security Scanning / Policy Validation ===
+
+# Check Docker daemon status (for Conftest)
+docker version
+
+# Test K8s manifest security scan (Deployment)
+docker run --rm -v $(pwd):/project \
+  openpolicyagent/conftest:latest \
+  test --policy ./policy kind-k8s-cluster/juice-shop-deployment.yaml
+
+# Test K8s manifest security scan (Service)
+docker run --rm -v $(pwd):/project \
+  openpolicyagent/conftest:latest \
+  test --policy ./policy kind-k8s-cluster/juice-shop-service.yaml
+
+# Test Dockerfile policy validation
+docker run --rm -v $(pwd):/project \
+  openpolicyagent/conftest:latest \
+  test --policy ./policy Dockerfile
+
+# Validate OPA Rego policy syntax
+conftest verify --policy ./policy
+
+# Expected output: Policy violations with deny/warn rules
+# Returns exit code based on failures (0=pass, non-zero=violations found)
+
+---
+
+=== Pipeline Validation ===
+
+# Validate GitHub Actions workflow YAML syntax
+python3 -c "import yaml; yaml.safe_load(open('.github/workflows/enhanced-pipeline.yml'))"
+
+# Expected output: No error = valid YAML syntax
+
+---
+
+=== Git Operations ===
+
+# Check repository status
+git status
+
+# View recent commits
+git log --oneline -10
+
+# Check current branch
+git branch --show-current
+
+# Create and switch to new branch
+git checkout -b feature/branch-name
+
+# Commit changes
+git add .
+git commit -m "Your commit message"
+
+# Push to remote
+git push origin branch-name
+
+---
+
+=== Docker/Container Commands ===
+
+# Build Docker image
+docker build -t juice-shop:latest .
+
+# Run container locally
+docker run -p 3000:3000 juice-shop:latest
+
+# View running containers
+docker ps
+
+# View all containers
+docker ps -a
+
+# Stop container
+docker stop <container-id>
+
+# Remove container
+docker rm <container-id>
+
+# View logs
+docker logs <container-id>
+
+# Docker Compose operations
+docker-compose up -d
+docker-compose down
+docker-compose logs -f
+
+---
+
+=== Kubernetes (Kind) Commands ===
+
+# Create Kind cluster
+kind create cluster --name juice-shop-cluster
+
+# Get cluster info
+kubectl cluster-info
+
+# Apply Kubernetes manifests
+kubectl apply -f k8s/
+
+# Get all resources
+kubectl get all
+
+# Get pods
+kubectl get pods
+
+# Describe pod
+kubectl describe pod <pod-name>
+
+# View logs
+kubectl logs <pod-name>
+
+# Delete resources
+kubectl delete -f k8s/
+
+# Delete cluster
+kind delete cluster --name juice-shop-cluster
+
+---
+
+=== AWS CLI Commands ===
+
+# Configure AWS profile
+aws configure --profile juice-shop
+
+# ECR login
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <account-id>.dkr.ecr.us-east-1.amazonaws.com
+
+# Create ECR repository
+aws ecr create-repository --repository-name juice-shop
+
+# Tag and push to ECR
+docker tag juice-shop:latest <account-id>.dkr.ecr.us-east-1.amazonaws.com/juice-shop:latest
+docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/juice-shop:latest
+
+# List ECS clusters
+aws ecs list-clusters
+
+# Describe ECS service
+aws ecs describe-services --cluster <cluster-name> --services <service-name>
+
+---
+
+=== LocalStack Commands ===
+
+# Start LocalStack
+localstack start
+
+# Check LocalStack status
+localstack status
+
+# AWS CLI with LocalStack endpoint
+aws --endpoint-url=http://localhost:4566 <service> <command>
+
+# Example: Create S3 bucket in LocalStack
+aws --endpoint-url=http://localhost:4566 s3 mb s3://juice-shop-bucket
+
+---
+
+=== Build & Deploy ===
+
+# Install dependencies
+npm install
+
+# Run application locally
+npm start
+
+# Run tests
+npm test
+
+# Build for production
+npm run build
+
+# Lint code
+npm run lint
+
+---
+
+=== Security Scanning ===
+
+# OWASP Dependency Check
+dependency-check --project juice-shop --scan .
+
+# Trivy container scan
+trivy image juice-shop:latest
+
+# Snyk security scan
+snyk test
+
+# Git secrets scan
+git secrets --scan
+
+---
+
+=== Database Operations ===
+
+# Connect to local SQLite database
+sqlite3 data/juiceshop.sqlite
+
+# Backup database
+cp data/juiceshop.sqlite data/juiceshop.sqlite.backup
+
+# View database tables
+sqlite3 data/juiceshop.sqlite ".tables"
+
+---
+
+=== Debugging & Logs ===
+
+# View application logs
+npm start 2>&1 | tee logs/app.log
+
+# Tail logs
+tail -f logs/app.log
+
+# Search logs for errors
+grep -i error logs/app.log
+
+# Docker container logs
+docker logs -f <container-name>
+
+---
+
+=== Testing & Validation ===
+
+# Run unit tests
+npm run test:unit
+
+# Run integration tests
+npm run test:integration
+
+# Run e2e tests
+npm run test:e2e
+
+# Check code coverage
+npm run test:coverage
+
+---
+
+Notes:
+- Replace <placeholders> with actual values
+- Some commands require proper AWS credentials or LocalStack setup
+- Refer to specific deployment guides in /docs for detailed procedures
+- Add new commands here as they're discovered and proven useful

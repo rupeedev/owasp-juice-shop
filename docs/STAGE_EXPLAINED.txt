@@ -15,6 +15,7 @@ Key Insight:
   • K8s Manifest    → Finds Kubernetes security misconfigurations (deployment security)
   • Security Headers→ Finds missing HTTP security headers (runtime protection)
   • OWASP ZAP       → Finds runtime vulnerabilities via active scanning (DAST)
+  • OWASP Noir      → Finds API attack surface by static analysis (endpoint discovery)
 
 TL;DR
 -----
@@ -1635,4 +1636,88 @@ ZAP finds vulnerabilities only visible when app is running: auth issues, session
 handling, HTTP response problems. For Juice Shop, 20-40 findings are EXPECTED
 and intentional for training. In production, Medium/High findings = blockers.
 
+
+================================================================================
+
+================================================================================
+
+STAGE 9: OWASP Noir - API Attack Surface Detection
+===================================================
+
+TL;DR
+-----
+Noir = Attack surface detector that identifies API endpoints by static analysis.
+Think of it as a map generator for your API.
+
+
+Command Execution:
+------------------
+noir -b . -u https://github.com/juice-shop/juice-shop -f json | jq . > noir-report.json
+cat noir-report.json | jq -r '.endpoints[] | "\(.method) \(.url)"' | sort | uniq
+
+Meaning:
+  • -b .               → Base path (scan current directory)
+  • -u <url>           → Base URL for discovered endpoints
+  • -f json            → Output format (JSON for machine parsing)
+  • jq                 → Parse JSON and extract endpoints
+  • Output             → noir-report.json
+
+
+
+
+PURPOSE IN CI/CD PIPELINE
+============================
+
+Why OWASP Noir in Stage 9?
+---------------------------
+✓ Attack surface mapping    → Discover ALL API endpoints
+✓ Feeds DAST tools          → Provides targets for ZAP
+✓ Hidden endpoint discovery → Finds undocumented APIs
+✓ Static analysis           → No running app needed
+
+Pipeline Position:
+------------------
+Stage 9: OWASP Noir (Standalone)
+             ↓
+         Runs after Stage 8 (parallel security scans)
+
+
+INTERPRETATION OF OUTPUT
+==========================
+
+Result: SUCCESS (127 endpoints discovered)
+------------------------------------------
+Noir performs static code analysis to extract API endpoints.
+
+Typical Juice Shop Findings:
+
+✓ /rest/user/login (POST)          → [sqli] SQL injection in email
+  Location: routes/login.ts:23
+  Parameters: email, password (form data)
+
+✓ /rest/products/search (GET)      → [sqli] SQL injection in query
+  Location: routes/search.ts:45
+  Parameters: q (query parameter)
+
+✓ /file-upload (POST)               → [file-upload] Unrestricted upload
+  Location: routes/fileUpload.ts:67
+
+Summary:
+  • 127 unique endpoints discovered
+  • 15 endpoints tagged with vulnerability indicators
+  • Includes hidden admin APIs not visible in UI
+
+What this means:
+• Noir maps entire API attack surface from source code
+• Finds endpoints ZAP would miss (no spidering needed)
+• Tags potential vulnerabilities for prioritized testing
+• For Juice Shop: Expected comprehensive discovery
+
+
+
+================================================================================
+
+Key Insight: Noir performs STATIC analysis (no running app) to discover hidden
+APIs that DAST tools miss. It's reconnaissance BEFORE testing - finds all
+endpoints including undocumented admin APIs by analyzing source code.
 
